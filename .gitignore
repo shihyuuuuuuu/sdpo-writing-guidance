@@ -1,0 +1,62 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments and local tooling
+.venv/
+venv/
+env/
+.uv/
+.idea/
+.vscode/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+*.swp
+
+# Local model/checkpoint and experiment artifacts
+checkpoints/
+outputs/
+wandb/
+mlruns/
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+
+# Generated evaluation results, plots, and logs
+eval/**
+!eval/.gitkeep
+*.log
+
+# Local datasets and downloaded/source books
+data/**
+books/epubs/**
+books/paragraphs/**
+books/raw_texts/**
+*.arrow
+*.parquet
+
+# Local caches
+.cache/
+cache/
+hf_cache/
+transformers_cache/
+
+# Local machine-specific files
+.python-version
+
