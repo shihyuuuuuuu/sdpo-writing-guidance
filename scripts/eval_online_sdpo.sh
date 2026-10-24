@@ -59,7 +59,6 @@ echo "BATCH_SIZE: $BATCH_SIZE"
 echo "LR:         $LR"
 echo "Loss mode:  $LOSS_MODE"
 echo "DATA_DIR:   $DATA_DIR ($LANGUAGE)"
-echo "STYLE_MODE: ${STYLE_MODE:-false}"
 echo "CHECKPT_DIR: $CHECKPT_DIR"
 echo "EVAL_DIR: $EVAL_DIR"
 echo ""
@@ -110,10 +109,6 @@ fi
 
 if [[ "$USER_VLLM" == true ]]; then
   python_cmd+=(--user_vllm)
-fi
-
-if [[ "${STYLE_MODE:-false}" == true ]]; then
-  python_cmd+=(--style_mode)
 fi
 
 if [[ "$SAVE_CHECKPOINTS" == "true" ]]; then

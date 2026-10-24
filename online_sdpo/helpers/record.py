@@ -18,7 +18,7 @@ def save_summary(args, config, train_ds, eval_ds):
     args_dict["lora_r"] = config.lora_r
     args_dict["distillation_topk"] = config.distillation_topk
 
-    out_path = os.path.join(args.eval_dir, "manifest.json")
+    out_path = os.path.join(args.eval_dir, "summary.json")
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(args_dict, f, ensure_ascii=False, indent=2)
     print(f"Summary saved: {out_path}", flush=True)

@@ -12,7 +12,7 @@ from .helpers import (
     resolve_symmetric_decisions,
     validate_pairwise_inputs,
 )
-from prompts.prompt import build_phase1_judge_messages, build_style_judge_messages
+from prompts.prompt import build_phase1_judge_messages
 
 
 class LocalJudge(JudgeBase):
@@ -31,7 +31,6 @@ class LocalJudge(JudgeBase):
         tie_margin: float = 0.05,
         author: str = "Unknown author",
         language: str = "en",
-        style_mode: bool = False,
     ):
         super().__init__()
         self.model = model.eval()
@@ -41,7 +40,6 @@ class LocalJudge(JudgeBase):
         self.tie_margin = tie_margin
         self.author = author
         self.language = language
-        self.style_mode = style_mode
         self.last_raw_outputs: List[str] = []
         # Raw generated rationales from the most recent generated-judging run.
         # Keep AB and BA separately so callers can inspect the symmetry check.
@@ -60,13 +58,14 @@ class LocalJudge(JudgeBase):
         candidate_a: str,
         candidate_b: str,
     ) -> str:
-        if self.style_mode:
-            chat = build_style_judge_messages(context, candidate_a, candidate_b)
-        else:
-            chat = build_phase1_judge_messages(
-                context, reference, candidate_a, candidate_b,
-                author=self.author, language=self.language,
-            )
+        chat = build_phase1_judge_messages(
+            context,
+            reference,
+            candidate_a,
+            candidate_b,
+            author=self.author,
+            language=self.language,
+        )
 
         if getattr(self.tok, "apply_chat_template", None) is not None:
             return self.tok.apply_chat_template(

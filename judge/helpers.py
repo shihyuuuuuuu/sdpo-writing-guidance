@@ -11,15 +11,17 @@ def validate_pairwise_inputs(
     completions_b: List[str],
 ) -> List[str]:
     """Validate and return references for a Phase 1 pairwise comparison."""
-    lengths = {len(prompts), len(completions_a), len(completions_b)}
-    if references is not None:
-        lengths.add(len(references))
+    if references is None:
+        raise ValueError(
+            "Phase 1 Judge requires references (the master continuations y_hat)."
+        )
+    lengths = {len(prompts), len(references), len(completions_a), len(completions_b)}
     if len(lengths) != 1:
         raise ValueError(
-            "prompts, references (when provided), completions_a, and completions_b must have "
+            "prompts, references, completions_a, and completions_b must have "
             "the same length."
         )
-    return references or [""] * len(prompts)
+    return references
 
 
 def parse_judgement(text: str) -> int:

@@ -4,19 +4,6 @@ from __future__ import annotations
 
 from typing import Dict, List
 
-# Shared style prompts live in their own module, but are re-exported here so
-# callers can keep using the package's existing ``prompts.prompt`` entrypoint.
-from .style_prompt import (
-    STYLE_JUDGE_SYSTEM_PROMPT,
-    STYLE_JUDGE_USER_TEMPLATE,
-    STYLE_PERSONA,
-    USER_FEEDBACK_USER_TEMPLATE,
-    USER_SIMULATOR_SYSTEM_PROMPT,
-    build_assistant_messages,
-    build_style_judge_messages,
-    build_user_feedback_messages,
-)
-
 
 PHASE1_ASSISTANT_PROMPTS = {
     "en": """

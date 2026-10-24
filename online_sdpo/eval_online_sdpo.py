@@ -25,13 +25,8 @@ from .helpers.parse_args import parse_args
 from .helpers.record import append_jsonl, save_summary
 from .online_sdpo_updater_config import OnlineSDPOConfig
 from .online_sdpo_updater import OnlineSDPOUpdater
-from prompts.prompt import build_assistant_messages, build_phase1_messages
-from user_simulator.user_simulator import (
-    LocalStyleUserSimulator,
-    LocalUserSimulator,
-    OpenAIStyleUserSimulator,
-    OpenAIUserSimulator,
-)
+from prompts.prompt import build_phase1_messages
+from user_simulator.user_simulator import LocalUserSimulator, OpenAIUserSimulator
 
 
 def prepare_ds(ds, args, n):
@@ -74,7 +69,6 @@ def main():
         max_new_tokens=args.max_new_tokens,
         temperature=0,
         eval_dir=args.eval_dir,
-        style_mode=args.style_mode,
     )
 
     save_summary(args, config, train_ds, eval_ds)
@@ -101,11 +95,6 @@ def main():
                 max_input_tokens=args.user_max_input_tokens,
                 max_new_tokens=args.user_max_new_tokens,
                 language=args.language,
-            ) if not args.style_mode else LocalStyleUserSimulator(
-                model=user_hf, tokenizer=user_tok,
-                device=next(user_hf.parameters()).device,
-                max_input_tokens=args.user_max_input_tokens,
-                max_new_tokens=args.user_max_new_tokens,
             )
 
             print(f"[EVAL] Using LocalJudge (shared with user sim)", flush=True)
@@ -115,7 +104,6 @@ def main():
                 device=next(user_hf.parameters()).device,
                 author=author,
                 language=args.language,
-                style_mode=args.style_mode,
             )
     elif args.user_api_provider == "openai":
         print("[EVAL] Using OpenAI user simulator.", flush=True)
@@ -123,9 +111,6 @@ def main():
             model=args.user_model,
             max_new_tokens=args.user_max_new_tokens,
             language=args.language,
-        ) if not args.style_mode else OpenAIStyleUserSimulator(
-            model=args.user_model,
-            max_new_tokens=args.user_max_new_tokens,
         )
 
         print(f"[EVAL] Using OpenAIJudge ({args.judge_model})", flush=True)
@@ -133,7 +118,6 @@ def main():
             model=args.judge_model,
             author=author,
             language=args.language,
-            style_mode=args.style_mode,
         )
     else:
         raise ValueError(f"Invalid user API provider: {args.user_api_provider!r}")
@@ -150,14 +134,9 @@ def main():
         batch_examples = [train_ds[i] for i in range(batch_start, batch_end)]
         batch_indices = list(range(batch_start, batch_end))
 
-        if args.style_mode:
-            p_contexts = [ex["prompt"].strip() for ex in batch_examples]
-            p_nexts = [None for _ in batch_examples]
-            messages_list = [build_assistant_messages(prompt) for prompt in p_contexts]
-        else:
-            p_contexts = [ex["p_context"].strip() for ex in batch_examples]
-            p_nexts = [ex["p_next"].strip() for ex in batch_examples]
-            messages_list = [build_phase1_messages(p_context, args.language) for p_context in p_contexts]
+        p_contexts = [ex["p_context"].strip() for ex in batch_examples]
+        p_nexts = [ex["p_next"].strip() for ex in batch_examples]
+        messages_list = [build_phase1_messages(p_context, args.language) for p_context in p_contexts]
 
         # Generate assistant responses for the whole batch.
         t0 = time.time()
@@ -166,18 +145,11 @@ def main():
 
         # Get simulated user feedback for the whole batch.
         t1 = time.time()
-        if args.style_mode:
-            feedbacks = simulator.generate_feedbacks(p_contexts, responses)
-        else:
-            feedbacks = simulator.generate_feedbacks(p_contexts, responses, p_nexts)
+        feedbacks = simulator.generate_feedbacks(p_contexts, responses, p_nexts)
         sim_time = time.time() - t1
 
         if batch_start == 0 and args.debug_first_example:
-            chat = (
-                simulator._build_prompt_text(p_contexts[0], responses[0])
-                if args.style_mode else
-                simulator._build_prompt_text(p_contexts[0], responses[0], p_nexts[0])
-            )
+            chat = simulator._build_prompt_text(p_contexts[0], responses[0], p_nexts[0])
             print_first_example(chat, feedbacks[0])
 
         for feedback in feedbacks:

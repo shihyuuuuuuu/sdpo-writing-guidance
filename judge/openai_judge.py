@@ -13,7 +13,7 @@ from .helpers import (
     resolve_symmetric_decisions,
     validate_pairwise_inputs,
 )
-from prompts.prompt import build_phase1_judge_messages, build_style_judge_messages
+from prompts.prompt import build_phase1_judge_messages
 
 
 class OpenAIJudge(JudgeBase):
@@ -42,7 +42,6 @@ class OpenAIJudge(JudgeBase):
         api_key_env: str = "OPENAI_API_KEY",
         author: str = "Unknown author",
         language: str = "en",
-        style_mode: bool = False,
     ):
         super().__init__()
         api_key = os.environ.get(api_key_env)
@@ -57,7 +56,6 @@ class OpenAIJudge(JudgeBase):
         self.max_workers = int(max_workers)
         self.author = author
         self.language = language
-        self.style_mode = style_mode
         self.last_raw_outputs: List[str] = []
         # Raw generated rationales from the most recent generated-judging run.
         self.last_raw_outputs_ab: List[str] = []
@@ -72,8 +70,6 @@ class OpenAIJudge(JudgeBase):
         candidate_a: str,
         candidate_b: str,
     ) -> List[dict]:
-        if self.style_mode:
-            return build_style_judge_messages(context, candidate_a, candidate_b)
         return build_phase1_judge_messages(
             context, reference, candidate_a, candidate_b,
             author=self.author, language=self.language,

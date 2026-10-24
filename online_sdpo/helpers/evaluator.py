@@ -11,11 +11,7 @@ from tqdm import tqdm
 from .logging import print_eval_result, print_first_judge
 from .record import append_jsonl
 from ..online_sdpo_updater import OnlineSDPOUpdater
-from prompts.prompt import (
-    build_assistant_messages,
-    build_phase1_judge_messages,
-    build_phase1_messages,
-)
+from prompts.prompt import build_phase1_judge_messages, build_phase1_messages
 
 
 class Evaluator:
@@ -27,16 +23,10 @@ class Evaluator:
     temperature: float
     eval_dir: str
 
-    def __init__(self, eval_ds, lang: str, max_new_tokens: int, temperature: float, eval_dir: str, style_mode: bool = False):
-        self.style_mode = style_mode
-        if style_mode:
-            self.p_contexts = [ex["prompt"].strip() for ex in eval_ds]
-            self.p_nexts = [None for _ in eval_ds]
-            self.chats = [build_assistant_messages(prompt) for prompt in self.p_contexts]
-        else:
-            self.p_contexts = [ex["p_context"].strip() for ex in eval_ds]
-            self.p_nexts = [ex["p_next"].strip() for ex in eval_ds]
-            self.chats = [build_phase1_messages(c, lang) for c in self.p_contexts]
+    def __init__(self, eval_ds, lang: str, max_new_tokens: int, temperature: float, eval_dir: str):
+        self.p_contexts = [ex["p_context"].strip() for ex in eval_ds]
+        self.p_nexts = [ex["p_next"].strip() for ex in eval_ds]
+        self.chats = [build_phase1_messages(c, lang) for c in self.p_contexts]
         self._base_completions = []
         self.max_new_tokens = max_new_tokens
         self.temperature = temperature
@@ -109,15 +99,10 @@ class Evaluator:
         eval_metrics["judge_time_s"] = round(judge_time, 1)
         if step == 1:
             # 建議改成 _build_prompt_text 或 _build_messages
-            if self.style_mode:
-                chat = judge._build_prompt_text(
-                    self.p_contexts[0], "", current_completions[0], self.base_completions[0]
-                )
-            else:
-                chat = build_phase1_judge_messages(
-                    self.p_contexts[0], self.p_nexts[0], current_completions[0],
-                    self.base_completions[0], author=judge.author, language=judge.language,
-                )
+            chat = build_phase1_judge_messages(
+                self.p_contexts[0], self.p_nexts[0], current_completions[0],
+                self.base_completions[0], author=judge.author, language=judge.language,
+            )
             decisions = eval_metrics.get("decisions", [])
             print_first_judge(chat, decisions, judge)
         
@@ -202,7 +187,7 @@ class Evaluator:
         try:
             decisions = judge.choose_batch_generated(
                 prompts=self.p_contexts,
-                references=None if self.style_mode else self.p_nexts,
+                references=self.p_nexts,
                 completions_a=current_completions,
                 completions_b=self.base_completions,
                 progress_callback=progress.update,
@@ -261,6 +246,3 @@ def compute_metrics(decisions: List[int], bootstrap_seed: Optional[int] = None) 
         "se_bootstrap": se_boot,
         "n_effective": n_eff,
     }
-
-
-

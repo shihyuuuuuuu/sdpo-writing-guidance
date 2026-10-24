@@ -31,11 +31,6 @@ def parse_args():
     p.add_argument("--train_jsonl", type=str, required=True)
     p.add_argument("--val_jsonl", type=str, required=True)
     p.add_argument("--language", type=str, required=True)
-    p.add_argument(
-        "--style_mode",
-        action="store_true",
-        help="Run the dataset-agnostic preference experiment (Figure 5 style mode).",
-    )
     
     # GPU
     p.add_argument("--model_gpu", type=int, required=True)
