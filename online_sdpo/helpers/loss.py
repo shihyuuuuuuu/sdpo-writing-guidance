@@ -198,7 +198,7 @@ def _compute_token_logprobs(
     # including the trailing EOS are real.  The old mask
     # (y_ids != pad_id) incorrectly zeroed EOS when pad_id == eos_id.
     y_mask = torch.ones_like(y_ids)                  # (1, C)
-
+    # print("x include o input token len: ", len(enc["input_ids"][0]))
     input_ids = torch.cat([enc["input_ids"], y_ids], dim=1)
     attention_mask = torch.cat([enc["attention_mask"], y_mask], dim=1)
 

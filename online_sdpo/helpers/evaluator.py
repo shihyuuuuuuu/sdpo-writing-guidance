@@ -45,7 +45,7 @@ class Evaluator:
     def baseline_avg_len(self):
         return sum(len(c) for c in self._base_completions) / max(len(self._base_completions), 1)
 
-    def generate_completions(self, updater: OnlineSDPOUpdater, batch_size=32) -> List[str]:
+    def generate_completions(self, updater: OnlineSDPOUpdater, batch_size=16) -> List[str]:
         """Generate completions for all eval prompts using the current model."""
         completions = []
 
@@ -60,6 +60,18 @@ class Evaluator:
             )
 
         return completions
+
+    @staticmethod
+    def _avg_completion_tokens(completions: List[str], tokenizer) -> float:
+        if not completions:
+            return 0.0
+        encoded = tokenizer(
+            completions,
+            add_special_tokens=False,
+            padding=False,
+            truncation=False,
+        )["input_ids"]
+        return sum(len(ids) for ids in encoded) / len(encoded)
 
     # 評估這個 updater (和 baseline 比較)
     def evaluate(
@@ -83,6 +95,12 @@ class Evaluator:
         current_completions = self.generate_completions(updater)
         eval_gen_time = time.time() - t_eval
         current_avg_len = sum(len(c) for c in current_completions) / max(len(current_completions), 1)
+        current_avg_tokens = self._avg_completion_tokens(
+            current_completions, updater.tokenizer,
+        )
+        baseline_avg_tokens = self._avg_completion_tokens(
+            self.base_completions, updater.tokenizer,
+        )
         print(f"[EVAL @ step {step}] avg_len={current_avg_len:.0f} chars (baseline={self.baseline_avg_len:.0f})", flush=True)
         
         print(f"[EVAL @ step {step}] Running judge ({len(self.p_contexts)} comparisons)...", flush=True)
@@ -97,14 +115,15 @@ class Evaluator:
         eval_metrics["interactions_seen"] = interactions_seen
         eval_metrics["eval_gen_time_s"] = round(eval_gen_time, 1)
         eval_metrics["judge_time_s"] = round(judge_time, 1)
+        eval_metrics["current_avg_tokens"] = round(current_avg_tokens, 2)
+        eval_metrics["baseline_avg_tokens"] = round(baseline_avg_tokens, 2)
         if step == 1:
-            # 建議改成 _build_prompt_text 或 _build_messages
-            chat = build_phase1_judge_messages(
+            messages = build_phase1_judge_messages(
                 self.p_contexts[0], self.p_nexts[0], current_completions[0],
                 self.base_completions[0], author=judge.author, language=judge.language,
             )
             decisions = eval_metrics.get("decisions", [])
-            print_first_judge(chat, decisions, judge)
+            print_first_judge(messages, decisions, judge)
         
         append_jsonl(eval_metrics_path, eval_metrics)
         print_eval_result(eval_metrics, eval_gen_time, judge_time)
@@ -180,7 +199,7 @@ class Evaluator:
         progress = tqdm(
             total=total_calls,
             desc=progress_desc or "Judging",
-            unit="call",
+            unit="judgement",
             dynamic_ncols=True,
             leave=False,
         )

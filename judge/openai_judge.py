@@ -63,18 +63,6 @@ class OpenAIJudge(JudgeBase):
         self.last_decisions_ab: List[int] = []
         self.last_decisions_ba: List[int] = []
 
-    def _build_messages(
-        self,
-        context: str,
-        reference: str,
-        candidate_a: str,
-        candidate_b: str,
-    ) -> List[dict]:
-        return build_phase1_judge_messages(
-            context, reference, candidate_a, candidate_b,
-            author=self.author, language=self.language,
-        )
-
     def _call_once(
         self,
         context: str,
@@ -84,8 +72,9 @@ class OpenAIJudge(JudgeBase):
     ) -> tuple[int, str]:
         request = {
             "model": self.model,
-            "messages": self._build_messages(
-                context, reference, candidate_a, candidate_b
+            "messages": build_phase1_judge_messages(
+                context, reference, candidate_a, candidate_b,
+                author=self.author, language=self.language,
             ),
             "max_completion_tokens": self.max_output_tokens,
         }
@@ -134,7 +123,7 @@ class OpenAIJudge(JudgeBase):
         completions_a: List[str],
         completions_b: List[str],
         references: Optional[List[str]] = None,
-        batch_size: int = 8,
+        batch_size: int = 16,
         progress_callback: Optional[Callable[[int], None]] = None,
     ) -> List[int]:
         """Compare A/B against the same reference using AB/BA symmetry."""
@@ -207,25 +196,3 @@ class OpenAIJudge(JudgeBase):
         self.last_raw_outputs = self.last_raw_outputs_ab + self.last_raw_outputs_ba
 
         return final_decisions
-
-    def choose_batch(
-        self,
-        prompts: List[str],
-        completions_a: List[str],
-        completions_b: List[str],
-        references: Optional[List[str]] = None,
-        batch_size: int = 16,
-    ) -> List[int]:
-        """Compatibility entry point matching the local Judge API.
-
-        OpenAI does not expose the local model's label log-probability path, so
-        this method uses the same generated-judgement path as
-        ``choose_batch_generated``.
-        """
-        return self.choose_batch_generated(
-            prompts=prompts,
-            completions_a=completions_a,
-            completions_b=completions_b,
-            references=references,
-            batch_size=batch_size,
-        )

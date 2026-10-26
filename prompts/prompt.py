@@ -2,27 +2,30 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Dict, List
 
 
 PHASE1_ASSISTANT_PROMPTS = {
     "en": """
-You are an expert literary assistant and creative writer.
-Your task is to continue the story based on the provided context, strictly maintaining the original author's narrative style, tone, sentence structure, and pacing.
+You are an expert literary assistant. Based on the preceding passage, continue the story with the next complete, natural paragraph while preserving the original author's narrative style, tone, syntax, and pacing.
 
 Rules:
-1. Seamlessly continue the passage as if written by the same author.
-2. Maintain strong narrative logic and stylistic coherence with the context.
-3. Output ONLY the next paragraph. Do not add any conversational remarks, titles, or meta-comments.
+1. Continue seamlessly from the preceding passage as if it were written by the same author.
+2. Maintain strong narrative logic and stylistic coherence with the preceding passage.
+3. Keep the continuation to approximately 250 tokens.
+4. Output exactly one paragraph. Do not use blank lines or additional paragraph breaks.
+5. Output only the next complete paragraph. Do not add conversational replies, titles, explanations, or any other meta-commentary.
 """,
     "zh": """
-你是一位專業文學助手與創作作家。
-你的任務是根據提供的前文續寫故事，嚴格維持原作者的敘事風格、語氣、句法結構與節奏。
+你是一位專業文學助手，請根據故事前文，續寫緊接其後的一個完整自然段落，並維持原作者的敘事風格、語氣、句法結構與節奏。
 
 規則：
 1. 讓續文自然銜接前文，如同由同一位作者寫成。
 2. 維持嚴密的敘事邏輯，以及與前文一致的文體。
-3. 只輸出下一段正文；不要加入對話式回覆、標題或任何後設說明。
+3. 篇幅控制在約 250 tokens 左右。
+4. 全文只能有一個段落，不要使用空白行或額外換行。
+5. 只輸出下一個完整段落；不要加入對話式回覆、標題或任何後設說明。
 """,
 }
 
@@ -32,31 +35,25 @@ PHASE1_CONTINUATION_USER_PROMPTS = {
 
 {context}
 
-Continue the next paragraph:""",
+Continue with the next complete, natural paragraph:""",
     "zh": """以下是故事前文：
 
 {context}
 
-請續寫下一段正文：""",
+請續寫緊接其後的一個完整自然段落：""",
 }
 
 
 PHASE1_USER_PROMPTS = {
     "en": """
-You are an expert literary mentor guiding an AI assistant to revise its draft. The assistant's goal is to predict and write the next paragraph following a given story context, closely aligning with the target author's narrative style and pacing.
-
-Your Task:
-Help the AI assistant write better. Compare the "assistant draft" directly with the "original completion" in the context of the "story context". Provide concise, high-level revision feedback to assist the assistant in its improvement.
+You are a professional literary mentor guiding an AI assistant to refine its story continuation. The assistant aims to emulate the original author's style, logic, and narrative rhythm based on the provided "Story Context."
+Your task is to compare the "Assistant Draft" against the "Original Completion" within the context of the background and provide concise, actionable feedback.
 
 Rules:
-1. Focus on Style & Direction: Point out specific gaps in diction, tone, pacing, overall style, character voice, or narrative logic without detailing the entire plot.
-2. Feedback Goal: Guide the assistant so that its continuation aligns more closely with the original author's style and fits seamlessly with the story context, as if written by the same author.
-3. Strict Anti-Leakage:
-   - NEVER quote, directly reveal, or summarize the exact plot solutions or dialogues from the original completion.
-   - Use conceptual guidance (e.g., "replace modern emotional descriptions with concise action and dialogue", "maintain suspense rather than resolving the threat prematurely").
-4. Keep It Concise: Output ONLY 3-5 direct sentences (keep feedback under 150 words). Do NOT provide literary analysis or explain "why".
-5. Output Format: Output ONLY the feedback text.
-6. Exceptional Case: If the draft already closely aligns with the original completion in style, output ONLY: "The continuation matches the master's style well. Proceed without major revisions."
+1. Focus on Style & Direction: Highlight specific gaps in diction, tone, pacing, character voice, or logic.
+2. Concrete Guidance: Keep feedback highly specific and directly actionable based on the draft; avoid generic criticism.
+3. Keep It Concise: Output only 3–5 direct feedback sentences (under 150 words).
+4. Strict Output Format: Output the feedback text only.
 """,
     "zh": """
 你是一位專業的文學導師，正在引導 AI 助手修改其文章，助手的任務是根據給定的「故事前文」，試圖模擬該作家的文風與邏輯，續寫可能的下一段落，並且內容要高度契合原作者的目標風格與敘事節奏。
@@ -64,13 +61,12 @@ Rules:
 而你的任務是幫助這位 AI 助手寫得更好。請在「故事前文」的脈絡下，對比「助手草稿」與「原作續文」。提供簡潔的修訂反饋，以協助助手改進。
 
 規則：
-1. 聚焦於風格與方向：指出用字遣詞、語調、節奏、風格、人物口吻或敘事邏輯上的具體差距，切勿詳細描繪整個情節。
+1. 聚焦於風格與方向：指出用字遣詞、語調、節奏、風格、人物口吻或敘事邏輯上的具體差距。
 2. 反饋目標：透過此反饋與引導，使助理撰寫的文章更接近原作風格，並且使續寫內容更符合故事前文，彷彿是由同一位作家所撰寫。
-3. **反饋必須非常具體、根據其文章內容提供明確修改方向，避免空泛詞彙。**
-4. 嚴進直接告知原作中的精確情節解答或對話，盡量使用引導方式。
+3. 反饋必須非常具體、根據其文章內容提供明確修改方向，避免空泛詞彙。
+4. 嚴禁直接告知原作中的精確情節解答或對話，盡量使用引導方式。
 5. 保持簡潔：僅輸出 3-5 句直接的反饋（字數控制在 150 字以內）。
 6. 格式限制：僅輸出反饋本文。
-7. 特殊情況：若草稿在風格上已高度契合原作，請僅輸出：「續寫內容已高度符合大師風格，無需大幅修改。」
 """,
 }
 
@@ -104,7 +100,7 @@ Write the mentor's next feedback message:
 
 
 PHASE1_FEEDBACK_FALLBACKS = {
-    "en": "Could you revise your response to better address my request?",
+    "en": "Please revise your continuation based on the specific differences between the target style and your current draft.",
     "zh": "請根據目標原作續文與目前草稿的具體差異，重新修改你的續寫。",
 }
 
@@ -123,9 +119,8 @@ Evaluate the candidates based on:
 4. Pacing & Structure: Sentence-level rhythm and paragraph organization typical of the author.
 
 Rules:
-- Do NOT judge generic helpfulness, fluency, or user preference.
 - Do NOT simply prefer a candidate because it copies exact words from the reference.
-- Base your judgment on which candidate better captures the master author's true writing style.
+- Prioritize whether the diction, syntax, narrative pacing, character voice, and plot transitions match the original author's style, rather than the word count or paragraph count.
 - Reason briefly, then end with strictly one of the following decisions:
 Judgement: A
 Judgement: B
@@ -145,9 +140,8 @@ Judgement: C
 4. 節奏與結構：是否具備該作者典型的句子節奏與段落組織。
 
 規則：
-- 不要評判泛用性、流暢度或一般讀者偏好。
-- 不要只因候選文逐字複製原作續文就偏好它。
-- 應以哪一篇更準確捕捉原作者真正的寫作風格為判準。
+- 不得因候選文較長、細節較多或語言較華麗而偏好該候選，應以哪一篇更準確捕捉原作者真正的寫作風格為判準。
+- 優先判斷措辭、句法、敘事節奏、人物語氣與情節銜接是否符合原作者風格，而不是文字數量、段落數量。
 - 簡短說明理由後，最後一行必須嚴格輸出下列其中一項：
 判定：A
 判定：B
@@ -166,7 +160,7 @@ PHASE1_JUDGE_USER_PROMPTS = {
 [Context]
 {context}
 
-[Reference Orignial Continuation]
+[Reference Original Continuation]
 {reference}
 
 [Candidate A]
@@ -200,6 +194,20 @@ Provide a brief rationale analyzing their stylistic alignment, then end with exa
 }
 
 
+HINDSIGHT_BLOCK_TEMPLATES = {
+    "en": (
+        "\n\n=== HINDSIGHT CONTEXT ===\n"
+        "[The following is a future user message. Use this to guide your answer to the user prompt.]\n"
+        "{follow_up}"
+    ),
+    "zh": (
+        "\n\n=== 回溯情境 ===\n"
+        "[以下是未來的使用者訊息。請利用這些資訊引導你回應目前的使用者指令。]\n"
+        "{follow_up}"
+    ),
+}
+
+
 def get_phase1_assistant_prompt(language: str) -> str:
     return PHASE1_ASSISTANT_PROMPTS[language]
 
@@ -226,6 +234,27 @@ def get_phase1_judge_system_prompt(language: str) -> str:
 
 def get_phase1_judge_user_prompt(language: str) -> str:
     return PHASE1_JUDGE_USER_PROMPTS[language]
+
+
+def get_hindsight_block_template(language: str) -> str:
+    return HINDSIGHT_BLOCK_TEMPLATES[language]
+
+
+def build_hindsight_messages(
+    messages: List[Dict[str, str]],
+    follow_up: str,
+    language: str = "en",
+) -> List[Dict[str, str]]:
+    """Append a language-specific hindsight block to the last user message."""
+    conditional = copy.deepcopy(messages)
+    block = get_hindsight_block_template(language).format(
+        follow_up=follow_up.strip(),
+    )
+    for i in range(len(conditional) - 1, -1, -1):
+        if conditional[i]["role"] == "user":
+            conditional[i]["content"] += block
+            break
+    return conditional
 
 def build_phase1_messages(
     p_context: str,

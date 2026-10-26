@@ -4,7 +4,6 @@ Core SDPO update logic for live, single-user chat training.
 Owns the model, tokenizer, optimizer, and handles both
 generation (eval mode) and per-turn gradient updates (train mode).
 """
-import copy
 import os
 import shutil
 import threading
@@ -25,6 +24,7 @@ from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from .helpers.loss import full_distillation_loss, simple_signal_loss
 from .helpers.model import generate_chat_batch, load_model_and_tokenizer
 from .online_sdpo_updater_config import OnlineSDPOConfig
+from prompts.prompt import build_hindsight_messages
 
 
 class OnlineSDPOUpdater:
@@ -223,27 +223,6 @@ class OnlineSDPOUpdater:
         self.model.train()
 
     # ------------------------------------------------------------------ #
-    #  Hindsight prompt construction  (offline_trainer.py:64-70)
-    # ------------------------------------------------------------------ #
-
-    def _build_hindsight_messages(
-        self,
-        messages: List[Dict[str, str]],
-        follow_up: str,
-    ) -> List[Dict[str, str]]:
-        """Append [HINDSIGHT CONTEXT] block to last user message."""
-        conditional = copy.deepcopy(messages)
-        block = self.config.hindsight_block_template.format(
-            follow_up=follow_up.strip(),
-        )
-        # Walk backwards to find the last user message
-        for i in range(len(conditional) - 1, -1, -1):
-            if conditional[i]["role"] == "user":
-                conditional[i]["content"] += block
-                break
-        return conditional
-
-    # ------------------------------------------------------------------ #
     #  Training step
     # ------------------------------------------------------------------ #
 
@@ -281,8 +260,10 @@ class OnlineSDPOUpdater:
                 add_generation_prompt=True,
                 enable_thinking=False,
             )
-            xo_messages = self._build_hindsight_messages(
-                messages, interaction["user_follow_up"],
+            xo_messages = build_hindsight_messages(
+                messages,
+                interaction["user_follow_up"],
+                language=self.config.language,
             )
             xo_text = self.tokenizer.apply_chat_template(
                 xo_messages,

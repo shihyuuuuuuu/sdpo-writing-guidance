@@ -2,11 +2,11 @@
 from abc import ABC, abstractmethod
 import os
 import time
-from typing import List, Optional, Union
+from typing import Dict, List, Optional
 
 from openai import OpenAI
 import torch
-from transformers import PreTrainedModel, GenerationConfig
+from transformers import PreTrainedModel
 
 from online_sdpo.helpers.model import generate_chat_batch
 from prompts.prompt import (
@@ -32,9 +32,7 @@ class UserSimulator(ABC):
     @abstractmethod
     def generate_feedbacks(
         self,
-        paragraphs: List[str],
-        completions: List[str],
-        p_next_golds: List[str],
+        messages_list: List[List[Dict[str, str]]],
     ) -> List[str]:
         """
         Returns one user feedback string per (prompt, completion, p_next_gold).
@@ -49,12 +47,12 @@ class UserSimulator(ABC):
             completion=completion,
             reference=p_next_gold,
         )
-        chat = [
+        messages = [
             {"role": "system", "content": get_phase1_user_prompt(self.language).strip()},
             {"role": "user", "content": user_msg},
         ]
 
-        return chat
+        return messages
 
 
 class LocalUserSimulator(UserSimulator):
@@ -79,22 +77,15 @@ class LocalUserSimulator(UserSimulator):
     @torch.no_grad()
     def generate_feedbacks(
         self,
-        paragraphs: List[str],
-        completions: List[str],
-        p_next_golds: List[str],
+        messages_list: List[List[Dict[str, str]]],
     ) -> List[str]:
         
         self.model.eval()
-        chats = [
-            self._build_prompt_text(p, c, p_next)
-            for p, c, p_next in zip(paragraphs, completions, p_next_golds)
-        ]
-
         return generate_chat_batch(
             self.model,
             self.tok,
             self.device,
-            chats,
+            messages_list,
             self.max_input_tokens,
             self.max_output_tokens,
             self.temperature,
@@ -129,10 +120,10 @@ class OpenAIUserSimulator(UserSimulator):
         self.max_retries = int(max_retries)
         self.base_backoff_s = float(base_backoff_s)
 
-    def _one_call(self, chat: List[dict]) -> str:
+    def _one_call(self, messages: List[dict]) -> str:
         request = {
             "model": self.model,
-            "messages": chat,
+            "messages": messages,
             "max_completion_tokens": self.max_output_tokens,
         }
         is_gpt5 = self.model.lower().startswith("gpt-5")
@@ -155,25 +146,15 @@ class OpenAIUserSimulator(UserSimulator):
 
     def generate_feedbacks(
         self,
-        paragraphs: List[str],
-        completions: List[str],
-        p_next_golds: List[str],
+        messages_list: List[List[Dict[str, str]]],
     ) -> List[str]:
-        if len(paragraphs) != len(completions):
-            raise ValueError("paragraphs and completions must have the same length")
-        if len(p_next_golds) != len(paragraphs):
-            raise ValueError("paragraphs and p_next_golds must have the same length")
 
         outputs: List[str] = []
-        chats = [
-            self._build_prompt_text(p, c, p_next)
-            for p, c, p_next in zip(paragraphs, completions, p_next_golds)
-        ]
-        for chat in chats:
+        for messages in messages_list:
             last_error: Optional[Exception] = None
             for attempt in range(self.max_retries):
                 try:
-                    outputs.append(self._one_call(chat))
+                    outputs.append(self._one_call(messages))
                     break
                 except Exception as error:
                     last_error = error
