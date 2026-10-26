@@ -120,15 +120,14 @@ def main() -> None:
     winrates = [float(row.get("winrate_a", 0.0)) for row in rows]
     winrates_with_ties = [winrate_including_ties(row) for row in rows]
     standard_errors = [float(row.get("se", 0.0)) for row in rows]
-    coverage = [100.0 * float(row.get("coverage", 0.0)) for row in rows]
-    eval_times = [float(row.get("eval_gen_time_s", 0.0)) for row in rows]
-    judge_times = [float(row.get("judge_time_s", 0.0)) for row in rows]
+    current_avg_tokens = [float(row.get("current_avg_tokens", 0.0)) for row in rows]
+    baseline_avg_tokens = [float(row.get("baseline_avg_tokens", 0.0)) for row in rows]
 
     output_path = args.output or metrics_path.with_name("eval_metrics.png")
     output_path = output_path.expanduser()
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    fig, axes = plt.subplots(3, 1, figsize=(11, 12), sharex=True)
+    fig, axes = plt.subplots(2, 1, figsize=(11, 9), sharex=True)
 
     ax = axes[0]
     ax.plot(x_values, winrates, "-o", label="Win rate A (excluding ties)")
@@ -142,30 +141,23 @@ def main() -> None:
     ax.legend(loc="best")
     ax.grid(alpha=0.3)
 
+    for values in (winrates, winrates_with_ties):
+        for x, value in zip(x_values, values):
+            ax.annotate(f"{value:.1f}", (x, value), xytext=(0, 7),
+                        textcoords="offset points", ha="center", fontsize=8)
+
     ax = axes[1]
-    ax.plot(x_values, wins_a, "-o", label="Wins A")
-    ax.plot(x_values, wins_b, "-o", label="Wins B")
-    ax.plot(x_values, ties, "-o", label="Ties")
-    ax.set_ylabel("Examples")
-    ax.set_title("Judge decisions")
+    ax.plot(x_values, current_avg_tokens, "-o", label="Current avg tokens")
+    ax.plot(x_values, baseline_avg_tokens, "-o", label="Baseline avg tokens")
+    ax.set_ylabel("Tokens")
+    ax.set_title("Average generated completion length")
     ax.legend(loc="best")
     ax.grid(alpha=0.3)
-
-    ax = axes[2]
-    ax.plot(x_values, coverage, "-o", color="tab:green", label="Decisive coverage")
-    ax.set_ylabel("Coverage (%)", color="tab:green")
-    ax.tick_params(axis="y", labelcolor="tab:green")
-    ax.set_ylim(-2, 102)
     ax.set_xlabel(x_label)
-    ax.set_title("Evaluation coverage and runtime")
-    ax.grid(alpha=0.3)
-    runtime_ax = ax.twinx()
-    runtime_ax.plot(x_values, eval_times, "--", color="tab:purple", label="Generation time")
-    runtime_ax.plot(x_values, judge_times, "--", color="tab:orange", label="Judge time")
-    runtime_ax.set_ylabel("Time (s)")
-    handles, labels = ax.get_legend_handles_labels()
-    runtime_handles, runtime_labels = runtime_ax.get_legend_handles_labels()
-    ax.legend(handles + runtime_handles, labels + runtime_labels, loc="best")
+    for values in (current_avg_tokens, baseline_avg_tokens):
+        for x, value in zip(x_values, values):
+            ax.annotate(f"{value:.2f}", (x, value), xytext=(0, 7),
+                        textcoords="offset points", ha="center", fontsize=8)
 
     fig.suptitle(metrics_path.parent.name, y=0.995, fontsize=14)
     fig.tight_layout()

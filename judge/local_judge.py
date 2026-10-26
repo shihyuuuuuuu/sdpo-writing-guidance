@@ -12,6 +12,7 @@ from .helpers import (
     resolve_symmetric_decisions,
     validate_pairwise_inputs,
 )
+from online_sdpo.helpers.model import generate_chat_batch
 from prompts.prompt import build_phase1_judge_messages
 
 
@@ -27,7 +28,7 @@ class LocalJudge(JudgeBase):
         model: PreTrainedModel,
         tokenizer,
         device: torch.device,
-        max_input_tokens: int = 4096, # LENN
+        max_input_tokens: int = 2048, # LENN
         tie_margin: float = 0.05,
         author: str = "Unknown author",
         language: str = "en",
@@ -50,35 +51,6 @@ class LocalJudge(JudgeBase):
 
         if self.tok.pad_token is None:
             self.tok.pad_token = self.tok.eos_token
-
-    def _build_prompt_text(
-        self,
-        context: str,
-        reference: str,
-        candidate_a: str,
-        candidate_b: str,
-    ) -> str:
-        chat = build_phase1_judge_messages(
-            context,
-            reference,
-            candidate_a,
-            candidate_b,
-            author=self.author,
-            language=self.language,
-        )
-
-        if getattr(self.tok, "apply_chat_template", None) is not None:
-            return self.tok.apply_chat_template(
-                chat,
-                tokenize=False,
-                add_generation_prompt=True,
-                enable_thinking=False,
-            )
-
-        return (
-            f"System:\n{chat[0]['content']}\n\n"
-            f"User:\n{chat[1]['content']}\n\nAssistant:"
-        )
 
     def _label_variants(self) -> Dict[str, List[List[int]]]:
         variants = {
@@ -194,46 +166,13 @@ class LocalJudge(JudgeBase):
         return decisions.tolist()
 
     @torch.no_grad()
-    def choose_batch(
-        self,
-        prompts: List[str],
-        completions_a: List[str],
-        completions_b: List[str],
-        references: Optional[List[str]] = None,
-        batch_size: int = 16,
-    ) -> List[int]:
-        """Score A/B against the same master reference, using log-probabilities."""
-        references = validate_pairwise_inputs(
-            prompts, references, completions_a, completions_b
-        )
-        decisions_final: List[int] = []
-        for start in range(0, len(prompts), batch_size):
-            end = min(len(prompts), start + batch_size)
-            texts_ab = [
-                self._build_prompt_text(
-                    prompts[i], references[i], completions_a[i], completions_b[i]
-                )
-                for i in range(start, end)
-            ]
-            texts_ba = [
-                self._build_prompt_text(
-                    prompts[i], references[i], completions_b[i], completions_a[i]
-                )
-                for i in range(start, end)
-            ]
-            d_ab = self._decide_from_scores(self._score_abc_batch(texts_ab))
-            d_ba = self._decide_from_scores(self._score_abc_batch(texts_ba))
-            decisions_final.extend(resolve_symmetric_decisions(d_ab, d_ba))
-        return decisions_final
-
-    @torch.no_grad()
     def choose_batch_generated(
         self,
         prompts: List[str],
         completions_a: List[str],
         completions_b: List[str],
         references: Optional[List[str]] = None,
-        batch_size: int = 32,
+        batch_size: int = 16,
         progress_callback: Optional[Callable[[int], None]] = None,
     ) -> List[int]:
         """Generate textual judgements for A/B, with AB/BA symmetry checking."""
@@ -283,27 +222,24 @@ class LocalJudge(JudgeBase):
         candidates_a: List[str],
         candidates_b: List[str],
     ) -> List[int]:
-        texts = [
-            self._build_prompt_text(context, reference, candidate_a, candidate_b)
-            for context, reference, candidate_a, candidate_b in zip(
+        messages_list = [
+            build_phase1_judge_messages(
+                context, reference, candidate_a, candidate_b,
+                author=self.author, language=self.language,
+            ) for context, reference, candidate_a, candidate_b in zip(
                 contexts, references, candidates_a, candidates_b
             )
         ]
-        encoded = self.tok(
-            texts,
-            return_tensors="pt",
-            padding=True,
-            truncation=True,
-            max_length=self.max_input_tokens,
-        ).to(self.device)
-        outputs = self.model.generate(
-            **encoded,
-            max_new_tokens=self.max_output_tokens,
-            do_sample=False,
-            pad_token_id=self.tok.pad_token_id,
-        )
-        generated = self.tok.batch_decode(
-            outputs[:, encoded["input_ids"].shape[1] :], skip_special_tokens=True
+
+        generated = generate_chat_batch(
+            self.model,
+            self.tok,
+            self.device,
+            messages_list,
+            self.max_input_tokens,
+            self.max_output_tokens,
+            temperature=0,
         )
         self.last_raw_outputs = generated
+
         return [parse_judgement(text) for text in generated]

@@ -43,7 +43,7 @@ def main():
     keys = {
         "model", "use_lora", "loss_mode", "model_vllm", "model_gpu",
         "vllm_gpu", "vllm_gpu_mem", "max_input_tokens", "max_new_tokens",
-        "temperature", "batch_size", "save_checkpoints",
+        "temperature", "batch_size", "save_checkpoints", "language",
     }
     config = OnlineSDPOConfig(
         **{k: v for k, v in args_dict.items() if k in keys},
@@ -136,16 +136,20 @@ def main():
 
         p_contexts = [ex["p_context"].strip() for ex in batch_examples]
         p_nexts = [ex["p_next"].strip() for ex in batch_examples]
-        messages_list = [build_phase1_messages(p_context, args.language) for p_context in p_contexts]
+        u_messages_list = [build_phase1_messages(p_context, args.language) for p_context in p_contexts]
 
         # Generate assistant responses for the whole batch.
+        print("Generating assistant responses......")
         t0 = time.time()
-        responses = updater.generate_responses_batch(messages_list)
+        responses = updater.generate_responses_batch(u_messages_list)
         gen_time = time.time() - t0
 
+        s_messages_list = [simulator._build_prompt_text(p, c, p_next)for p, c, p_next in zip(p_contexts, responses, p_nexts)]
+
         # Get simulated user feedback for the whole batch.
+        print("Generating user feedbacks......")
         t1 = time.time()
-        feedbacks = simulator.generate_feedbacks(p_contexts, responses, p_nexts)
+        feedbacks = simulator.generate_feedbacks(s_messages_list)
         sim_time = time.time() - t1
 
         if batch_start == 0 and args.debug_first_example:
@@ -165,7 +169,7 @@ def main():
                 "dataset_index": dataset_index,
             }
             for messages, response, feedback, p_context, p_next, dataset_index in zip(
-                messages_list, responses, feedbacks, p_contexts, p_nexts, batch_indices,
+                u_messages_list, responses, feedbacks, p_contexts, p_nexts, batch_indices,
             )
         ]
 

@@ -48,15 +48,8 @@ class OnlineSDPOConfig:
     max_input_tokens: int
     max_new_tokens: int
     temperature: float
-    top_p: float = 0.9
-    do_sample: bool = True # 這有用嗎 還是用 temperature 控制就好
-
-    # Hindsight prompt format
-    hindsight_block_template: str = (
-        "\n\n=== HINDSIGHT CONTEXT ===\n"
-        "[The following is a future user message. Use this to guide your answer to the user prompt.]\n"
-        "{follow_up}"
-    )
+    top_p: float = 0.8
+    language: str = "en"
 
     """ Checkpointing """
     checkpoint_dir: str
