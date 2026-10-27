@@ -13,7 +13,7 @@ You are an expert literary assistant. Based on the preceding passage, continue t
 Rules:
 1. Continue seamlessly from the preceding passage as if it were written by the same author.
 2. Maintain strong narrative logic and stylistic coherence with the preceding passage.
-3. Keep the continuation to approximately 250 tokens.
+3. Target approximately 300-330 words.(About 240–270 tokens)
 4. Output exactly one paragraph. Do not use blank lines or additional paragraph breaks.
 5. Output only the next complete paragraph. Do not add conversational replies, titles, explanations, or any other meta-commentary.
 """,
@@ -23,7 +23,7 @@ Rules:
 規則：
 1. 讓續文自然銜接前文，如同由同一位作者寫成。
 2. 維持嚴密的敘事邏輯，以及與前文一致的文體。
-3. 篇幅控制在約 250 tokens 左右。
+3. 目標篇幅約為 300-330 字。（約 240–270 tokens）
 4. 全文只能有一個段落，不要使用空白行或額外換行。
 5. 只輸出下一個完整段落；不要加入對話式回覆、標題或任何後設說明。
 """,
@@ -51,9 +51,12 @@ Your task is to compare the "Assistant Draft" against the "Original Completion" 
 
 Rules:
 1. Focus on Style & Direction: Highlight specific gaps in diction, tone, pacing, character voice, or logic.
-2. Concrete Guidance: Keep feedback highly specific and directly actionable based on the draft; avoid generic criticism.
-3. Keep It Concise: Output only 3–5 direct feedback sentences (under 150 words).
-4. Strict Output Format: Output the feedback text only.
+2. Improvement Goal: Guide the assistant toward the target author's style, logic, and narrative rhythm, while making the continuation fit naturally with the story context.
+3. Concrete Guidance: Keep feedback highly specific and directly actionable based on the draft; avoid generic criticism.
+4. Length Check: The target continuation is approximately 280–350 words. If the draft is clearly below or over this range, explicitly say that it is too short or too long and instruct the assistant to adjust.
+5. Do Not Reveal the Answer: Do not directly provide the reference continuation's exact plot events or dialogue; use indirect guidance instead.
+6. Keep It Concise: Output only 5–7 direct feedback sentences (under 180 words).
+7. Strict Output Format: Output the feedback text only.
 """,
     "zh": """
 你是一位專業的文學導師，正在引導 AI 助手修改其文章，助手的任務是根據給定的「故事前文」，試圖模擬該作家的文風與邏輯，續寫可能的下一段落，並且內容要高度契合原作者的目標風格與敘事節奏。
@@ -64,9 +67,10 @@ Rules:
 1. 聚焦於風格與方向：指出用字遣詞、語調、節奏、風格、人物口吻或敘事邏輯上的具體差距。
 2. 反饋目標：透過此反饋與引導，使助理撰寫的文章更接近原作風格，並且使續寫內容更符合故事前文，彷彿是由同一位作家所撰寫。
 3. 反饋必須非常具體、根據其文章內容提供明確修改方向，避免空泛詞彙。
-4. 嚴禁直接告知原作中的精確情節解答或對話，盡量使用引導方式。
-5. 保持簡潔：僅輸出 3-5 句直接的反饋（字數控制在 150 字以內）。
-6. 格式限制：僅輸出反饋本文。
+4. 篇幅檢查：續寫目標約為 280-350 字。如果助手草稿明顯太短或太長，應引導其做調整。
+5. 避免直接告知原作中的精確情節解答或對話，盡量使用引導方式。
+6. 保持簡潔：僅輸出 5-7 句直接的反饋（字數控制在 180 字以內）。
+7. 格式限制：僅輸出反饋本文。
 """,
 }
 
@@ -120,7 +124,8 @@ Evaluate the candidates based on:
 
 Rules:
 - Do NOT simply prefer a candidate because it copies exact words from the reference.
-- Prioritize whether the diction, syntax, narrative pacing, character voice, and plot transitions match the original author's style, rather than the word count or paragraph count.
+- Length is part of completion quality: the assistant draft target length is approximately 280-350 words. A candidate that is clearly below 250 words is incomplete and should normally be penalized, especially if it ends before developing the scene. Do not prefer a longer candidate merely because it is longer, and do not reward padding or repetition.
+- After applying this length-completeness check, prioritize whether the diction, syntax, narrative pacing, character voice, and plot transitions match the original author's style.
 - Reason briefly, then end with strictly one of the following decisions:
 Judgement: A
 Judgement: B
@@ -140,9 +145,9 @@ Judgement: C
 4. 節奏與結構：是否具備該作者典型的句子節奏與段落組織。
 
 規則：
-- 不得因候選文較長、細節較多或語言較華麗而偏好該候選，應以哪一篇更準確捕捉原作者真正的寫作風格為判準。
-- 優先判斷措辭、句法、敘事節奏、人物語氣與情節銜接是否符合原作者風格，而不是文字數量、段落數量。
-- 簡短說明理由後，最後一行必須嚴格輸出下列其中一項：
+- 篇幅也是續寫完整度的一部分：助理草稿的目標篇幅約為 280-350 字。明顯少於 250 字的候選通常是不完整的，尤其是在尚未發展場景就結束時，應予以扣分。不得只因候選較長就偏好它，也不得獎勵灌水或重複內容。
+- 完成上述篇幅與完整度檢查後，再判斷措辭、句法、敘事節奏、人物語氣與情節銜接是否符合原作者風格。
+- 簡短3-4句話說明理由後，最後一行必須嚴格輸出下列其中一項：
 判定：A
 判定：B
 判定：C

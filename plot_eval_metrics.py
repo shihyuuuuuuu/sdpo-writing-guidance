@@ -127,7 +127,9 @@ def main() -> None:
     output_path = output_path.expanduser()
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    fig, axes = plt.subplots(2, 1, figsize=(11, 9), sharex=True)
+    fig, axes = plt.subplots(3, 1, figsize=(11, 12), sharex=True)
+    for axis in axes:
+        axis.tick_params(axis="x", labelbottom=True)
 
     ax = axes[0]
     ax.plot(x_values, winrates, "-o", label="Win rate A (excluding ties)")
@@ -144,9 +146,18 @@ def main() -> None:
     for values in (winrates, winrates_with_ties):
         for x, value in zip(x_values, values):
             ax.annotate(f"{value:.1f}", (x, value), xytext=(0, 7),
-                        textcoords="offset points", ha="center", fontsize=8)
+                        textcoords="offset points", ha="center", fontsize=10)
 
     ax = axes[1]
+    ax.plot(x_values, wins_a, "-o", label="Wins A")
+    ax.plot(x_values, wins_b, "-o", label="Wins B")
+    ax.plot(x_values, ties, "-o", label="Ties")
+    ax.set_ylabel("Examples")
+    ax.set_title("Judge decisions")
+    ax.legend(loc="best")
+    ax.grid(alpha=0.3)
+
+    ax = axes[2]
     ax.plot(x_values, current_avg_tokens, "-o", label="Current avg tokens")
     ax.plot(x_values, baseline_avg_tokens, "-o", label="Baseline avg tokens")
     ax.set_ylabel("Tokens")
@@ -157,7 +168,7 @@ def main() -> None:
     for values in (current_avg_tokens, baseline_avg_tokens):
         for x, value in zip(x_values, values):
             ax.annotate(f"{value:.2f}", (x, value), xytext=(0, 7),
-                        textcoords="offset points", ha="center", fontsize=8)
+                        textcoords="offset points", ha="center", fontsize=10)
 
     fig.suptitle(metrics_path.parent.name, y=0.995, fontsize=14)
     fig.tight_layout()

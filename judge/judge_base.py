@@ -7,7 +7,7 @@ from typing import Callable, List, Optional
 class JudgeBase(ABC):
     """Common public interface for local and API-backed Phase 1 judges."""
 
-    DEFAULT_MAX_OUTPUT_TOKENS = 256 # LENN
+    DEFAULT_MAX_OUTPUT_TOKENS = 512 # 參考：平均 200 左右
 
     def __init__(self) -> None:
         self.max_output_tokens = self.DEFAULT_MAX_OUTPUT_TOKENS
