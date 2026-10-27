@@ -57,8 +57,13 @@ def select_debug(records: list[dict], step: int | None, example: int) -> tuple[d
     return record, debug[example]
 
 
+NEUTRAL_RATIO = 0.08
+
+
 def color(signal: float, scale: float) -> str:
     # Blue = positive/reinforced, red = negative/penalized, white = neutral.
+    if scale and abs(signal) <= NEUTRAL_RATIO * scale:
+        return "rgba(255, 255, 255, 1.0)"
     x = max(-1.0, min(1.0, signal / scale)) if scale else 0.0
     if x >= 0:
         alpha = 0.10 + 0.75 * x
@@ -138,6 +143,7 @@ pre {{ max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; word-bre
 <h2>SDPO token signals</h2>
 <div class="meta">step={record.get('step')} &nbsp; example={example} &nbsp;
 visual scale=±{scale:.4f} (P95 of |signal|; values beyond this are shown at maximum color intensity)
+&nbsp; white=near-zero (|signal| ≤ {NEUTRAL_RATIO:.0%} of scale)
 &nbsp; red=negative, blue=positive
 &nbsp; outliers clipped for color={outliers}</div>
 <div class="label">User prompt / context</div>
@@ -156,7 +162,7 @@ visual scale=±{scale:.4f} (P95 of |signal|; values beyond this are shown at max
 def write_png(record: dict, debug: dict, path: Path) -> None:
     try:
         import matplotlib.pyplot as plt
-        from matplotlib.colors import TwoSlopeNorm
+        from matplotlib.colors import LinearSegmentedColormap, TwoSlopeNorm
     except ImportError:
         print("matplotlib is not installed; skipped PNG (HTML was still written).")
         return
@@ -173,7 +179,21 @@ def write_png(record: dict, debug: dict, path: Path) -> None:
     fig_width = max(12.0, min(36.0, len(signals) * 0.22))
     fig, ax = plt.subplots(figsize=(fig_width, 2.8))
     norm = TwoSlopeNorm(vmin=-scale, vcenter=0.0, vmax=scale)
-    ax.imshow([signals], aspect="auto", cmap="RdBu", norm=norm)
+    # Keep a visible white neutral band around zero instead of coloring tiny
+    # positive/negative signals as faint blue/red.
+    neutral = (1.0 - NEUTRAL_RATIO) / 2.0
+    signal_cmap = LinearSegmentedColormap.from_list(
+        "signal_neutral",
+        [
+            (0.0, "#dc3c37"),
+            (neutral - 0.02, "#f3b8b4"),
+            (neutral, "#ffffff"),
+            (1.0 - neutral, "#ffffff"),
+            (1.0 - neutral + 0.02, "#b9d0f0"),
+            (1.0, "#1e6edc"),
+        ],
+    )
+    ax.imshow([signals], aspect="auto", cmap=signal_cmap, norm=norm)
     ax.set_yticks([0])
     ax.set_yticklabels([f"step {record.get('step')}"])
     step = max(1, len(signals) // 30)

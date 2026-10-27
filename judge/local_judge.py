@@ -28,7 +28,7 @@ class LocalJudge(JudgeBase):
         model: PreTrainedModel,
         tokenizer,
         device: torch.device,
-        max_input_tokens: int = 2048, # LENN
+        max_input_tokens: int = 2500, # 參考：平均 2000 左右
         tie_margin: float = 0.05,
         author: str = "Unknown author",
         language: str = "en",
