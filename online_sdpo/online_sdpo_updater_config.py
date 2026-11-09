@@ -23,7 +23,7 @@ class OnlineSDPOConfig:
 
     """ SDPO signal """
     loss_mode: str  # "simple_signal" | "full_distillation" | "opsd_forward_kl_clip"
-    signal_clip: float = 0.0  # 0 = no clipping
+    signal_clip: float = 1.0  # 0 = no clipping
     pointwise_clip: float = 0.05  # OPSD per-vocabulary forward-KL clip
     ignore_first_k: int = 0
     distillation_topk: int = 20  # top-k logits for full_distillation
