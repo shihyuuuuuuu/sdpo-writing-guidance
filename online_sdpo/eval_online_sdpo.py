@@ -1,10 +1,10 @@
 """
 Automated evaluation of OnlineSDPOUpdater on dataset prompts.
 
-Simulates the live chat flow: for each training prompt, generate a response
-and get simulated user feedback. The collected interactions are averaged into
-batched SDPO updates. Periodically evaluates the current model against the
-pre-training baseline using a judge.
+For each training prompt, generate a response and use the dataset's actual
+next paragraph as the teacher-side reference context. The collected
+interactions are averaged into batched SDPO updates. Periodically evaluates
+the current model against the pre-training baseline using a judge.
 
 Usage:
     python -m online_sdpo.eval_online_sdpo \
@@ -19,14 +19,13 @@ from datasets import load_dataset
 
 from judge import local_judge, openai_judge
 from .helpers.evaluator import Evaluator
-from .helpers.logging import print_first_example, print_train_step
+from .helpers.logging import log_token_debug, print_first_example, print_train_step
 from .helpers.model import load_model_and_tokenizer
 from .helpers.parse_args import parse_args
 from .helpers.record import append_jsonl, save_summary
 from .online_sdpo_updater_config import OnlineSDPOConfig
 from .online_sdpo_updater import OnlineSDPOUpdater
-from prompts.prompt import build_phase1_messages
-from user_simulator.user_simulator import LocalUserSimulator, OpenAIUserSimulator
+from prompts.prompt import build_phase1_messages, build_phase1_teacher_messages
 
 
 def prepare_ds(ds, args, n):
@@ -37,6 +36,7 @@ def main():
     args = parse_args()
 
     train_steps_path = os.path.join(args.eval_dir, "train_steps.jsonl")
+    token_debug_path = os.path.join(args.eval_dir, "token_debug.jsonl")
 
     # ── 1. Build config ──
     args_dict = vars(args)
@@ -44,6 +44,8 @@ def main():
         "model", "use_lora", "loss_mode", "model_vllm", "model_gpu",
         "vllm_gpu", "vllm_gpu_mem", "max_input_tokens", "max_new_tokens",
         "temperature", "batch_size", "save_checkpoints", "language",
+        "max_grad_norm",
+        "max_decay_steps", "scheduler_type", "warmup_steps", "min_lr_ratio",
     }
     config = OnlineSDPOConfig(
         **{k: v for k, v in args_dict.items() if k in keys},
@@ -79,48 +81,26 @@ def main():
     evaluator.base_completions = evaluator.generate_completions(updater)
     print(f"[EVAL] Baseline generation took {time.time() - t0:.1f}s  avg_len={evaluator.baseline_avg_len:.0f} chars", flush=True)
 
-    # ── 5. Initialize user simulator and judge ──
-    user_llm = None  # shared vLLM instance for user sim + judge
-    # Judge model 目前都是跟著 user model 走，會是一樣的模型
-    if args.user_api_provider == "local":
-        if args.user_vllm:
-            ...
-        else:
-            print(f"[EVAL] Loading local user simulator: {args.user_model}", flush=True)
-            user_hf, user_tok = load_model_and_tokenizer(args.user_model, args.user_gpu)
-            user_hf.eval()
-            simulator = LocalUserSimulator(
-                model=user_hf, tokenizer=user_tok,
-                device=next(user_hf.parameters()).device,
-                max_input_tokens=args.user_max_input_tokens,
-                max_new_tokens=args.user_max_new_tokens,
-                language=args.language,
-            )
-
-            print(f"[EVAL] Using LocalJudge (shared with user sim)", flush=True)
-            judge = local_judge.LocalJudge(
-                model=user_hf,
-                tokenizer=user_tok,
-                device=next(user_hf.parameters()).device,
-                author=author,
-                language=args.language,
-            )
-    elif args.user_api_provider == "openai":
-        print("[EVAL] Using OpenAI user simulator.", flush=True)
-        simulator = OpenAIUserSimulator(
-            model=args.user_model,
-            max_new_tokens=args.user_max_new_tokens,
+    # ── 5. Initialize judge only ──
+    if args.judge_api_provider == "local":
+        print(f"[EVAL] Loading local judge: {args.judge_model}", flush=True)
+        judge_hf, judge_tok = load_model_and_tokenizer(args.judge_model, args.judge_gpu)
+        judge_hf.eval()
+        judge = local_judge.LocalJudge(
+            model=judge_hf,
+            tokenizer=judge_tok,
+            device=next(judge_hf.parameters()).device,
+            author=author,
             language=args.language,
         )
-
-        print(f"[EVAL] Using OpenAIJudge ({args.judge_model})", flush=True)
+    elif args.judge_api_provider == "openai":
         judge = openai_judge.OpenAIJudge(
             model=args.judge_model,
             author=author,
             language=args.language,
         )
     else:
-        raise ValueError(f"Invalid user API provider: {args.user_api_provider!r}")
+        raise ValueError(f"Invalid judge API provider: {args.judge_api_provider!r}")
 
     # ── 6. Training loop ──
     print(
@@ -144,43 +124,36 @@ def main():
         responses = updater.generate_responses_batch(u_messages_list)
         gen_time = time.time() - t0
 
-        s_messages_list = [simulator._build_prompt_text(p, c, p_next)for p, c, p_next in zip(p_contexts, responses, p_nexts)]
-
-        # Get simulated user feedback for the whole batch.
-        print("Generating user feedbacks......")
-        t1 = time.time()
-        feedbacks = simulator.generate_feedbacks(s_messages_list)
-        sim_time = time.time() - t1
-
         if batch_start == 0 and args.debug_first_example:
-            chat = simulator._build_prompt_text(p_contexts[0], responses[0], p_nexts[0])
-            print_first_example(chat, feedbacks[0])
-
-        for feedback in feedbacks:
-            print(f"feedback: {feedback[:]!r}", flush=True)
+            teacher_messages = build_phase1_teacher_messages(
+                u_messages_list[0], p_nexts[0], args.language,
+            )
+            print_first_example(teacher_messages, p_nexts[0])
 
         batch_interactions = [
             {
                 "messages_before_response": messages,
                 "assistant_response": response,
-                "user_follow_up": feedback,
-                "p_context": p_context,
                 "p_next": p_next,
+                "p_context": p_context,
                 "dataset_index": dataset_index,
             }
-            for messages, response, feedback, p_context, p_next, dataset_index in zip(
-                u_messages_list, responses, feedbacks, p_contexts, p_nexts, batch_indices,
+            for messages, response, p_context, p_next, dataset_index in zip(
+                u_messages_list, responses, p_contexts, p_nexts, batch_indices,
             )
         ]
 
         metrics = updater.train_batch(batch_interactions)
+        token_debug = metrics.pop("token_debug", None)
         for i in batch_interactions:
             i.pop("messages_before_response", None)
 
         metrics["gen_time_s"] = round(gen_time, 2)
-        metrics["sim_time_s"] = round(sim_time, 2)
         metrics["interactions_seen"] = batch_end
         metrics["interactions"] = batch_interactions
+
+        if token_debug is not None:
+            log_token_debug(token_debug_path, metrics["step"], batch_end, batch_interactions, token_debug)
         
         append_jsonl(train_steps_path, metrics)
         print_train_step(metrics)

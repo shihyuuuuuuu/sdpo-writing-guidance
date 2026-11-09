@@ -28,7 +28,7 @@ class LocalJudge(JudgeBase):
         model: PreTrainedModel,
         tokenizer,
         device: torch.device,
-        max_input_tokens: int = 2500, # 參考：平均 2000 左右
+        max_input_tokens: int = 3072, # 參考：平均 2000 左右
         tie_margin: float = 0.05,
         author: str = "Unknown author",
         language: str = "en",
@@ -172,7 +172,7 @@ class LocalJudge(JudgeBase):
         completions_a: List[str],
         completions_b: List[str],
         references: Optional[List[str]] = None,
-        batch_size: int = 16,
+        batch_size: int = 32, # BATCH
         progress_callback: Optional[Callable[[int], None]] = None,
     ) -> List[int]:
         """Generate textual judgements for A/B, with AB/BA symmetry checking."""

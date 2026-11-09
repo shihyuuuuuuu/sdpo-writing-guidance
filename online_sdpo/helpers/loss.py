@@ -21,15 +21,11 @@ def simple_signal_loss(
     # Keep dropout disabled for the teacher pass; otherwise the difference
     # between teacher and student also contains two independent dropout
     # masks. Restore the previous mode before the student forward pass.
-    was_training = updater.model.training
-    updater.model.eval()
-    try:
+    with updater.teacher_context():
         with torch.no_grad():
             logps_xo, mask_xo, _ = _compute_token_logprobs(
                 updater, xo_text, completion_ids, need_grad=False,
             )
-    finally:
-        updater.model.train(was_training)
 
     # log pi(y | x) — with grad
     logps_x, mask_x, _ = _compute_token_logprobs(
@@ -47,7 +43,19 @@ def simple_signal_loss(
     per_token_loss = -(per_token_diff * logps_x) * mask_f
     loss = (per_token_loss.sum(dim=1, keepdim=True) / length).mean()
 
-    # Keep token ids as the canonical alignment key.  Decoded pieces are for
+    total_tokens = mask_f.sum().clamp(min=1.0)
+    metrics = {
+        "signal_mean": (per_token_diff * mask_f).sum().item() / total_tokens.item(),
+        "signal_std": (
+            per_token_diff[mask_x.bool()].std().item()
+            if mask_x.any() else 0.0
+        ),
+        "policy_logp_mean": (logps_x.detach() * mask_f).sum().item() / total_tokens.item(),
+        "critic_logp_mean": (logps_xo * mask_f).sum().item() / total_tokens.item(),
+        "completion_tokens": int(total_tokens.item()),
+    }
+
+    # Keep token ids as the canonical alignment key. Decoded pieces are for
     # human-readable visualization only and may be byte/subword fragments.
     token_ids = completion_ids[0].detach().cpu().tolist()
     if updater.config.ignore_first_k > 0:
@@ -60,7 +68,7 @@ def simple_signal_loss(
         )
         for token_id in token_ids
     ]
-    token_debug = {
+    metrics["token_debug"] = {
         "token_ids": token_ids,
         "token_text": token_strings,
         "completion_text": updater.tokenizer.decode(
@@ -71,19 +79,6 @@ def simple_signal_loss(
         "logp_x": logps_x[0].detach().cpu().tolist(),
         "logp_xo": logps_xo[0].detach().cpu().tolist(),
         "signal": per_token_diff[0].detach().cpu().tolist(),
-    }
-
-    total_tokens = mask_f.sum().clamp(min=1.0)
-    metrics = {
-        "signal_mean": (per_token_diff * mask_f).sum().item() / total_tokens.item(),
-        "signal_std": (
-            per_token_diff[mask_x.bool()].std().item()
-            if mask_x.any() else 0.0
-        ),
-        "policy_logp_mean": (logps_x.detach() * mask_f).sum().item() / total_tokens.item(),
-        "critic_logp_mean": (logps_xo * mask_f).sum().item() / total_tokens.item(),
-        "completion_tokens": int(total_tokens.item()),
-        "token_debug": token_debug,
     }
 
     return loss, metrics
@@ -102,16 +97,12 @@ def full_distillation_loss(
     teacher is evaluated on those same indices.
     """
     # Teacher: pi(·|x,o) — no grad and deterministic dropout behavior.
-    was_training = updater.model.training
-    updater.model.eval()
-    try:
+    with updater.teacher_context():
         with torch.no_grad():
             _, _, logits_xo = _compute_token_logprobs(
                 updater, xo_text, completion_ids,
                 need_grad=False, need_logits=True,
             )
-    finally:
-        updater.model.train(was_training)
 
     # Student: pi(·|x) — with grad
     logps_x, mask_x, logits_x = _compute_token_logprobs(
@@ -155,6 +146,69 @@ def full_distillation_loss(
         "policy_logp_mean": (logps_x.detach() * mask_f).sum().item() / total_tokens.item(),
         "completion_tokens": int(total_tokens.item()),
         "loss_mode": "full_distillation",
+    }
+    return loss, metrics
+
+
+def opsd_forward_kl_clip_loss(
+    updater,
+    x_text: str,
+    xo_text: str,
+    completion_ids: torch.Tensor,
+) -> Tuple[torch.Tensor, Dict[str, Any]]:
+    """Full-vocabulary forward KL with OPSD pointwise clipping.
+
+    The teacher is evaluated on the same student-generated completion, but
+    under the reference-conditioned prompt. Each vocabulary contribution to
+    KL(p_teacher || p_student) is clipped before summing over the vocabulary,
+    matching the OPSD objective rather than clipping the final token KL.
+    """
+    with updater.teacher_context():
+        with torch.no_grad():
+            _, _, teacher_logits = _compute_token_logprobs(
+                updater,
+                xo_text,
+                completion_ids,
+                need_grad=False,
+                need_logits=True,
+            )
+
+    student_logps, mask, student_logits = _compute_token_logprobs(
+        updater,
+        x_text,
+        completion_ids,
+        need_grad=True,
+        need_logits=True,
+    )
+
+    student_log_probs = F.log_softmax(student_logits, dim=-1)
+    with torch.no_grad():
+        teacher_log_probs = F.log_softmax(teacher_logits, dim=-1)
+        teacher_probs = teacher_log_probs.exp()
+
+    # Forward KL pointwise contribution:
+    # p_T(v) * log(p_T(v) / p_S(v)).  Clamp before summing over v.
+    pointwise = teacher_probs * (teacher_log_probs - student_log_probs)
+    pointwise_clip = updater.config.pointwise_clip
+    clipped = pointwise.clamp(max=pointwise_clip)
+    per_token_kl = clipped.sum(dim=-1)
+
+    mask_f = mask.float()
+    total_tokens = mask_f.sum().clamp(min=1.0)
+    loss = (per_token_kl * mask_f).sum() / total_tokens
+
+    metrics = {
+        "forward_kl_mean": (
+            per_token_kl.detach() * mask_f
+        ).sum().item() / total_tokens.item(),
+        "pointwise_clip_fraction": (
+            (pointwise.detach() > pointwise_clip).float() * mask_f.unsqueeze(-1)
+        ).sum().item() / (total_tokens.item() * pointwise.size(-1)),
+        "policy_logp_mean": (
+            student_logps.detach() * mask_f
+        ).sum().item() / total_tokens.item(),
+        "completion_tokens": int(total_tokens.item()),
+        "loss_mode": "opsd_forward_kl_clip",
     }
     return loss, metrics
 
