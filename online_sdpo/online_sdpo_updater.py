@@ -8,6 +8,7 @@ import os
 import shutil
 import threading
 import time
+from contextlib import contextmanager, nullcontext
 from typing import Any, Dict, List, Optional
 
 import torch
@@ -20,11 +21,20 @@ from transformers import (
     TextIteratorStreamer,
 )
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+from torch.optim.lr_scheduler import (
+    CosineAnnealingLR,
+    LinearLR,
+    SequentialLR,
+)
 
-from .helpers.loss import full_distillation_loss, simple_signal_loss
+from .helpers.loss import (
+    full_distillation_loss,
+    opsd_forward_kl_clip_loss,
+    simple_signal_loss,
+)
 from .helpers.model import generate_chat_batch, load_model_and_tokenizer
 from .online_sdpo_updater_config import OnlineSDPOConfig
-from prompts.prompt import build_hindsight_messages
+from prompts.prompt import build_phase1_teacher_messages
 
 
 class OnlineSDPOUpdater:
@@ -99,6 +109,39 @@ class OnlineSDPOUpdater:
             weight_decay=self.config.weight_decay,
             eps=self.config.adam_epsilon,
         )
+
+        warmup_steps = self.config.warmup_steps
+        decay_steps = self.config.max_decay_steps - warmup_steps
+        min_lr = self.config.learning_rate * self.config.min_lr_ratio
+
+        if self.config.scheduler_type == "linear":
+            decay_scheduler = LinearLR(
+                self.optimizer,
+                start_factor=1.0,
+                end_factor=self.config.min_lr_ratio,
+                total_iters=decay_steps,
+            )
+        else:
+            decay_scheduler = CosineAnnealingLR(
+                self.optimizer,
+                T_max=decay_steps,
+                eta_min=min_lr,
+            )
+
+        if warmup_steps > 0:
+            warmup_scheduler = LinearLR(
+                self.optimizer,
+                start_factor=1e-8,
+                end_factor=1.0,
+                total_iters=warmup_steps,
+            )
+            self.scheduler = SequentialLR(
+                self.optimizer,
+                schedulers=[warmup_scheduler, decay_scheduler],
+                milestones=[warmup_steps],
+            )
+        else:
+            self.scheduler = decay_scheduler
 
     # ------------------------------------------------------------------ #
     #  vLLM initialization
@@ -192,6 +235,10 @@ class OnlineSDPOUpdater:
         sampling_params = SamplingParams(
             temperature=temperature if temperature is not None else self.config.temperature,
             top_p=self.config.top_p,
+            top_k=20,
+            min_p=0,
+            presence_penalty=0.2,
+            repetition_penalty=1.1,
             max_tokens=max_new_tokens if max_new_tokens is not None else self.config.max_new_tokens,
         )
 
@@ -222,6 +269,27 @@ class OnlineSDPOUpdater:
     def _enter_training_mode(self):
         self.model.train()
 
+    @contextmanager
+    def teacher_context(self):
+        """Evaluate the teacher with the initial/base policy when configured.
+
+        The current training setup uses LoRA. Disabling the adapter exposes the
+        unchanged quantized base model while the student continues to train its
+        adapter. The model mode is restored on exit.
+        """
+        was_training = self.model.training
+        self.model.eval()
+        adapter_context = (
+            self.model.disable_adapter()
+            if self.config.fixed_teacher and self.config.use_lora
+            else nullcontext()
+        )
+        try:
+            with adapter_context:
+                yield
+        finally:
+            self.model.train(was_training)
+
     # ------------------------------------------------------------------ #
     #  Training step
     # ------------------------------------------------------------------ #
@@ -234,7 +302,7 @@ class OnlineSDPOUpdater:
         ----------
         interactions
             Each item contains ``messages_before_response``,
-            ``assistant_response``, and ``user_follow_up``.
+            ``assistant_response``, and ``p_next``.
         """
         if not interactions:
             raise ValueError("train_batch requires at least one interaction")
@@ -260,9 +328,9 @@ class OnlineSDPOUpdater:
                 add_generation_prompt=True,
                 enable_thinking=False,
             )
-            xo_messages = build_hindsight_messages(
+            xo_messages = build_phase1_teacher_messages(
                 messages,
-                interaction["user_follow_up"],
+                interaction["p_next"],
                 language=self.config.language,
             )
             xo_text = self.tokenizer.apply_chat_template(
@@ -291,6 +359,10 @@ class OnlineSDPOUpdater:
                     loss, current_metrics = full_distillation_loss(
                         self, x_text, xo_text, completion_ids,
                     )
+                elif self.config.loss_mode == "opsd_forward_kl_clip":
+                    loss, current_metrics = opsd_forward_kl_clip_loss(
+                        self, x_text, xo_text, completion_ids,
+                    )
                 else:
                     raise ValueError(f"Unknown loss_mode: {self.config.loss_mode}")
 
@@ -302,7 +374,10 @@ class OnlineSDPOUpdater:
                 [p for p in self.model.parameters() if p.requires_grad],
                 self.config.max_grad_norm,
             )
+            learning_rate = self.optimizer.param_groups[0]["lr"]
             self.optimizer.step()
+            if self.scheduler.last_epoch < self.config.max_decay_steps:
+                self.scheduler.step()
 
         metrics = {}
         for key in batch_metrics[0]:
@@ -325,6 +400,7 @@ class OnlineSDPOUpdater:
         self.step += 1
         metrics["step"] = self.step
         metrics["grad_norm"] = grad_norm.item()
+        metrics["learning_rate"] = learning_rate
         metrics["loss"] = sum(losses) / batch_size
         metrics["batch_size"] = batch_size
         metrics["train_steps_per_batch"] = K

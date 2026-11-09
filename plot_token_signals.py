@@ -3,12 +3,12 @@
 
 Example:
   python plot_token_signals.py \
-    --train_steps eval/eval-online-sdpo-.../train_steps.jsonl \
+    --run_id eval-online-sdpo-... \
     --step 1 --example 0 --out_dir /tmp/sdpo-token-plot
 
-The HTML output is the preferred view for mixed Chinese/English text.  The
+The HTML output is the preferred view for mixed Chinese/English text. The
 PNG is a compact heatmap overview; token ids and numeric signals remain in
-the HTML title attributes and the original JSONL record.
+the HTML title attributes and the token-debug JSONL record.
 """
 
 from __future__ import annotations
@@ -49,8 +49,9 @@ def select_debug(records: list[dict], step: int | None, example: int) -> tuple[d
     debug = record.get("token_debug")
     if not debug:
         raise ValueError(
-            "This train_steps.jsonl has no token_debug. Run a new simple_signal "
-            "training job after token logging was added."
+            "No token_debug found. Run a new simple_signal training job, or provide "
+            "an older train_steps.jsonl containing "
+            "embedded token_debug."
         )
     if not 0 <= example < len(debug):
         raise ValueError(f"example must be in [0, {len(debug) - 1}]")
@@ -220,7 +221,9 @@ def main() -> None:
     train_steps = resolve_train_steps(repo_root, args.run_id, args.train_steps)
     if args.out_dir is None:
         args.out_dir = train_steps.parent / "token_plots"
-    records = load_records(train_steps)
+    separate_debug = train_steps.with_name("token_debug.jsonl")
+    records_path = separate_debug if separate_debug.is_file() else train_steps
+    records = load_records(records_path)
     record, debug = select_debug(records, args.step, args.example)
     args.out_dir.mkdir(parents=True, exist_ok=True)
     stem = f"step{record['step']}_example{args.example}"

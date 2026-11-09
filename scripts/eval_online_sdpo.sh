@@ -51,8 +51,8 @@ echo "=== EVAL ONLINE SDPO ==="
 echo "GPUs:       $(nvidia-smi -L 2>/dev/null | wc -l || echo 'N/A')"
 echo "Date:       $(date)"
 echo "Model:      $MODEL"
-echo "User model: $USER_MODEL"
-echo "User API:   $USER_API_PROVIDER"
+echo "Judge model: $JUDGE_MODEL"
+echo "Judge API:   $JUDGE_API_PROVIDER"
 echo "TRAIN_N:    $TRAIN_N"
 echo "EVAL_N:     $EVAL_N"
 echo "BATCH_SIZE: $BATCH_SIZE"
@@ -69,12 +69,16 @@ cd "$REPO_ROOT"
 python_cmd=(
   python -m online_sdpo.eval_online_sdpo
   --model "$MODEL"
-  --user_model "$USER_MODEL"
-  --user_api_provider "$USER_API_PROVIDER"
-  --judge_model "$USER_MODEL"
+  --judge_model "$JUDGE_MODEL"
+  --judge_api_provider "$JUDGE_API_PROVIDER"
 
   --lr "$LR"
+  --max_decay_steps "$MAX_DECAY_STEPS"
+  --scheduler_type "$SCHEDULER_TYPE"
+  --warmup_steps "$WARMUP_STEPS"
+  --min_lr_ratio "$MIN_LR_RATIO"
   --loss_mode "$LOSS_MODE"
+  --max_grad_norm "$MAX_GRAD_NORM"
   --train_n "$TRAIN_N"
   --eval_n "$EVAL_N"
   --eval_every "$EVAL_EVERY"
@@ -86,15 +90,13 @@ python_cmd=(
   --max_new_tokens "$MAX_NEW_TOKENS"
   --temperature "$TEMPERATURE"
 
-  --user_max_input_tokens "$USER_MAX_INPUT_TOKENS"
-  --user_max_new_tokens "$USER_MAX_NEW_TOKENS"
 
   --train_jsonl "$DATA_DIR/train.jsonl"
   --val_jsonl "$DATA_DIR/validation.jsonl"
   --language "$LANGUAGE"
 
   --model_gpu "$MODEL_GPU"
-  --user_gpu "$USER_GPU"
+  --judge_gpu "$JUDGE_GPU"
   --vllm_gpu "$VLLM_GPU"
   --vllm_gpu_mem "$VLLM_GPU_MEM"
 
@@ -105,10 +107,6 @@ python_cmd=(
 
 if [[ "$MODEL_VLLM" == true ]]; then
   python_cmd+=(--model_vllm)
-fi
-
-if [[ "$USER_VLLM" == true ]]; then
-  python_cmd+=(--user_vllm)
 fi
 
 if [[ "$SAVE_CHECKPOINTS" == "true" ]]; then

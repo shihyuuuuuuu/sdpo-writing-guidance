@@ -98,7 +98,7 @@ def main() -> None:
     try:
         metrics_path = resolve_metrics_path(args.input)
         rows = load_metrics(metrics_path)
-        rows = rows[:10] # 先取前100
+        # rows = rows[:10] # 先取前100
     except (FileNotFoundError, ValueError) as exc:
         raise SystemExit(f"error: {exc}") from exc
 
@@ -132,8 +132,12 @@ def main() -> None:
         axis.tick_params(axis="x", labelbottom=True)
 
     ax = axes[0]
-    ax.plot(x_values, winrates, "-o", label="Win rate A (excluding ties)")
-    ax.plot(x_values, winrates_with_ties, "-o", label="Win rate A (ties = 0.5)")
+    winrate_line, = ax.plot(
+        x_values, winrates, "-o", label="Win rate A (excluding ties)"
+    )
+    winrate_with_ties_line, = ax.plot(
+        x_values, winrates_with_ties, "-o", label="Win rate A (ties = 0.5)"
+    )
     lower = [max(0.0, value - error) for value, error in zip(winrates, standard_errors)]
     upper = [min(100.0, value + error) for value, error in zip(winrates, standard_errors)]
     ax.fill_between(x_values, lower, upper, alpha=0.15, label="±1 SE (excluding ties)")
@@ -143,10 +147,22 @@ def main() -> None:
     ax.legend(loc="best")
     ax.grid(alpha=0.3)
 
-    for values in (winrates, winrates_with_ties):
+    # Keep the two labels on opposite sides of each marker.
+    for values, line, offset in (
+        (winrates, winrate_line, (0, 9)),
+        (winrates_with_ties, winrate_with_ties_line, (0, -17)),
+    ):
         for x, value in zip(x_values, values):
-            ax.annotate(f"{value:.1f}", (x, value), xytext=(0, 7),
-                        textcoords="offset points", ha="center", fontsize=10)
+            ax.annotate(
+                f"{value:.1f}",
+                (x, value),
+                xytext=offset,
+                textcoords="offset points",
+                ha="center",
+                va="center",
+                fontsize=9,
+                color=line.get_color(),
+            )
 
     ax = axes[1]
     ax.plot(x_values, wins_a, "-o", label="Wins A")

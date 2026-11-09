@@ -1,8 +1,11 @@
+from .record import append_jsonl
+
+
 def print_first_example(chat, feedback):
     print("=" * 60, flush=True)
-    print("[DEBUG] User simulator — first example", flush=True)
+    print("[DEBUG] Teacher reference — first example", flush=True)
     print(f"  FULL FORMATTED INPUT:\n{chat}", flush=True)
-    print(f"  OUTPUT feedback:\n{feedback}", flush=True)
+    print(f"  REFERENCE CONTINUATION:\n{feedback}", flush=True)
     print("=" * 60, flush=True)
 
 def print_train_step(metrics) -> None:
@@ -13,9 +16,29 @@ def print_train_step(metrics) -> None:
     print(
         f"[STEP {step:4d}] batch={metrics['batch_size']} "
         f"loss={loss:.6f}  policy_logp={logp:.4f}  "
-        f"gen={metrics['gen_time_s']:.1f}s  sim={metrics['sim_time_s']:.1f}s  "
+        f"gen={metrics['gen_time_s']:.1f}s  "
         f"train={train_t:.1f}s",
         flush=True,
+    )
+
+
+def log_token_debug(path, step, interactions_seen, interactions, token_debug):
+    debug_interactions = [
+        {
+            key: interaction[key]
+            for key in ("p_context", "user_follow_up", "dataset_index")
+            if key in interaction
+        }
+        for interaction in interactions
+    ]
+    append_jsonl(
+        path,
+        {
+            "step": step,
+            "interactions_seen": interactions_seen,
+            "interactions": debug_interactions,
+            "token_debug": token_debug,
+        },
     )
 
 def print_first_judge(chat, d, judge):

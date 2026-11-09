@@ -12,20 +12,23 @@ You are an expert literary assistant. Based on the preceding passage, continue t
 
 Rules:
 1. Continue seamlessly from the preceding passage as if it were written by the same author.
-2. Maintain strong narrative logic and stylistic coherence with the preceding passage.
-3. Target approximately 300-330 words.(About 240–270 tokens)
-4. Output exactly one paragraph. Do not use blank lines or additional paragraph breaks.
-5. Output only the next complete paragraph. Do not add conversational replies, titles, explanations, or any other meta-commentary.
+2. Maintain strong narrative logic, plot continuity, and stylistic coherence with the preceding passage.
+3. Target approximately 80-130 words for this short paragraph. Prioritize a complete,
+   natural ending over an exact length; do not pad or truncate to reach the target.
+4. Continue from the endpoint without recapping the preceding passage. Do not
+   introduce an unrelated scene or unprepared characters.
+5. Output only the next complete paragraph. Do not add conversational replies,
+   titles, explanations, or any other meta-commentary.
 """,
     "zh": """
-你是一位專業文學助手，請根據故事前文，續寫緊接其後的一個完整自然段落，並維持原作者的敘事風格、語氣、句法結構與節奏。
+你是一位專業文學助手，請根據故事前文，續寫緊接其後的一個小段落，並維持原作者的敘事風格、語氣、句法結構與節奏。
 
 規則：
-1. 讓續文自然銜接前文，如同由同一位作者寫成。
+1. 讓續文自然銜接前文，用字遣詞、劇情、語調、節奏、風格、人物口吻或敘事邏輯上如同由同一位作者寫成。
 2. 維持嚴密的敘事邏輯，以及與前文一致的文體。
-3. 目標篇幅約為 300-330 字。（約 240–270 tokens）
-4. 全文只能有一個段落，不要使用空白行或額外換行。
-5. 只輸出下一個完整段落；不要加入對話式回覆、標題或任何後設說明。
+3. 目標篇幅約為 80-130 字。以敘事完整、自然收束為優先，不要為了達到字數而灌水、重複或硬截斷。
+4. 從前文結尾直接往下續寫，不要重述前文，也不要突然引入沒有鋪陳的新場景或人物。
+5. 只輸出下一個段落內文；不要加入對話式回覆、標題或任何後設說明。
 """,
 }
 
@@ -35,12 +38,12 @@ PHASE1_CONTINUATION_USER_PROMPTS = {
 
 {context}
 
-Continue with the next complete, natural paragraph:""",
+Continue with the next short, complete, natural paragraph:""",
     "zh": """以下是故事前文：
 
 {context}
 
-請續寫緊接其後的一個完整自然段落：""",
+請續寫緊接其後的一個小段落：""",
 }
 
 
@@ -111,48 +114,54 @@ PHASE1_FEEDBACK_FALLBACKS = {
 
 PHASE1_JUDGE_SYSTEM_PROMPTS = {
     "en": """
-You are a strict pairwise evaluator of literary continuations for style alignment.
+You are a strict but conservative pairwise evaluator of literary continuations.
 
-You will be given the name of the target author, the story context, and the reference continuation written by the author.
-Your task is to compare Candidate A and Candidate B and determine which candidate is more likely to have been written by the specified target author in terms of both style and narrative trajectory.
+You will be given the target author, the story context, the author's reference continuation, and two candidates. Determine which candidate is more likely to be a natural continuation in the author's style and narrative voice.
 
-Evaluate the candidates based on:
-1. Narrative & Plot Continuity: Seamless flow and logical plot progression from the context.
-2. Authorial Style & Tone: Alignment with the target author's distinct tone, vocabulary, syntax, and sentence structure.
-3. Imagery & Atmosphere: Consistency with the author's descriptive habits, sensory details, and thematic mood.
-4. Pacing & Structure: Sentence-level rhythm and paragraph organization typical of the author.
+Evaluate the candidates in this order:
+1. Context continuity: character state, setting, time, narrative viewpoint, and logical progression from the context.
+2. Authorial style: diction, syntax, sentence rhythm, tone, and character voice.
+3. Narrative quality: whether the candidate develops the scene naturally rather than adding disconnected events, adjective piling, repetition, or padding.
+4. Completeness: penalize only an obviously truncated or unfinished passage, or a passage that does not form a complete paragraph. Do not use a fixed word or token threshold.
 
 Rules:
-- Do NOT simply prefer a candidate because it copies exact words from the reference.
-- Length is part of completion quality: the assistant draft target length is approximately 280-350 words. A candidate that is clearly below 250 words is incomplete and should normally be penalized, especially if it ends before developing the scene. Do not prefer a longer candidate merely because it is longer, and do not reward padding or repetition.
-- After applying this length-completeness check, prioritize whether the diction, syntax, narrative pacing, character voice, and plot transitions match the original author's style.
-- Reason briefly, then end with strictly one of the following decisions:
+- Use the reference continuation as a calibration example for the author's style, narrative logic, and likely continuation. It is not an answer key.
+- Do not prefer a candidate merely because it copies words, phrases, or plot details from the reference.
+- Do not prefer a candidate merely because it is longer. Do not penalize a candidate merely because it is shorter unless it is clearly incomplete.
+- If the quality difference is too small or the evidence is insufficient, choose C.
+- Complete the comparison across all four criteria, but output only the most
+  important reasons. Use at most four sentences for the rationale; do not use
+  Markdown, numbered lists, or repeated analysis. Then put the decision on the
+  final line, using strictly one of the following formats:
 Judgement: A
 Judgement: B
 Judgement: C
 
-(Judgement: C means both candidates are indistinguishable in style quality, or evidence is insufficient to choose a winner.)
+(Judgement: C means the candidates are indistinguishable in quality, or the evidence is insufficient to choose a winner.)
 """,
     "zh": """
-你是一位嚴格的文學續寫成對評審，負責判斷候選續文與目標作者風格的一致性。
+你是一位嚴格但保守的文學續寫成對評審。
 
-你會收到目標作者姓名、故事前文，以及由該作者寫成的原作續文。請比較候選 A 與候選 B，判斷哪一篇在文體與敘事走向上更可能出自指定作者之手。
+你會收到目標作者、故事前文、原作者的參考續文，以及候選 A 和候選 B。請判斷哪一篇更可能是自然承接前文、並符合原作者文體與敘事聲音的續文。
 
-請依據下列面向評估：
-1. 敘事與情節銜接：是否能自然承接前文，並合乎邏輯地推進情節。
-2. 作者風格與語氣：是否符合該作者獨特的語氣、詞彙、句法與句子結構。
-3. 意象與氛圍：是否符合該作者慣用的描寫方式、感官細節與主題氛圍。
-4. 節奏與結構：是否具備該作者典型的句子節奏與段落組織。
+請依下列順序評估：
+1. 前文銜接：人物狀態、場景、時間、敘事視角，以及是否合乎邏輯地承接前文。
+2. 作者風格：用字遣詞、句法、句子節奏、語氣與人物口吻。
+3. 敘事品質：是否自然發展場景，而不是堆疊形容詞、重複內容、加入無關事件或灌水。
+4. 完整度：只有在候選明顯中途截斷、句子未完成或沒有形成完整段落時才扣分，不使用固定字數或 token 門檻。
 
 規則：
-- 篇幅也是續寫完整度的一部分：助理草稿的目標篇幅約為 280-350 字。明顯少於 250 字的候選通常是不完整的，尤其是在尚未發展場景就結束時，應予以扣分。不得只因候選較長就偏好它，也不得獎勵灌水或重複內容。
-- 完成上述篇幅與完整度檢查後，再判斷措辭、句法、敘事節奏、人物語氣與情節銜接是否符合原作者風格。
-- 簡短3-4句話說明理由後，最後一行必須嚴格輸出下列其中一項：
+- 原作續文只用來校準作者風格、敘事邏輯與可能的承接方式，不是標準答案。
+- 不得只因候選複製原作續文的字詞、句子或情節就判定它較好。
+- 不得只因候選較長就偏好它；除非明顯未完成，也不要只因候選較短就扣分。
+- 如果兩篇品質差異太小，或證據不足以選出勝者，請判定為 C。
+- 完成上述四個面向的比較，但只輸出最重要的理由。理由最多四句，不要
+  使用 Markdown、編號或重複分析。最後一行必須嚴格輸出下列其中一項：
 判定：A
 判定：B
 判定：C
 
-（判定：C 代表兩篇在風格品質上難以區分，或證據不足以選出勝者。）
+（判定：C 代表兩篇品質難以區分，或證據不足以選出勝者。）
 """,
 }
 
@@ -174,8 +183,8 @@ PHASE1_JUDGE_USER_PROMPTS = {
 [Candidate B]
 {candidate_b}
 
-Which candidate is more likely to be the continuation written by {author}?
-Provide a brief rationale analyzing their stylistic alignment, then end with exactly: Judgement: A, Judgement: B, or Judgement: C.
+Which candidate is more likely to be a natural continuation in {author}'s style and narrative voice?
+Follow the system's evaluation criteria. Give at most four concise rationale sentences with no Markdown or numbered list. Put exactly `Judgement: A`, `Judgement: B`, or `Judgement: C` on the final line.
 """,
     "zh": """
 [目標作者]
@@ -193,8 +202,8 @@ Provide a brief rationale analyzing their stylistic alignment, then end with exa
 [候選 B]
 {candidate_b}
 
-哪一篇候選文更可能是由 {author} 寫成的下一段續文？
-請簡短說明兩者與作者風格的契合程度，最後必須嚴格輸出：判定：A、判定：B 或判定：C。
+哪一篇候選文更可能是自然承接前文、並符合 {author} 文體與敘事聲音的續文？
+請遵守 system prompt 的評分規則。理由最多四句、保持精簡，不要使用 Markdown 或編號。最後一行必須嚴格輸出：判定：A、判定：B 或判定：C。
 """,
 }
 
@@ -209,6 +218,29 @@ HINDSIGHT_BLOCK_TEMPLATES = {
         "\n\n=== 回溯情境 ===\n"
         "[以下是未來的使用者訊息。請利用這些資訊引導你回應目前的使用者指令。]\n"
         "{follow_up}"
+    ),
+}
+
+
+PHASE1_REFERENCE_BLOCK_TEMPLATES = {
+    "en": (
+        "\n\n[Reference Continuation]\n"
+        "{reference}\n\n"
+        "You are now the training-time self-teacher. The student saw only the "
+        "original story context and cannot see this reference. Use the "
+        "reference to reassess the original continuation task: infer the author's "
+        "transferable style, narrative state, pacing, and likely constraints. "
+        "Then answer the original continuation prompt directly with one natural, "
+        "complete paragraph. Do not mention or copy the reference. Do not "
+        "output analysis, reasoning, a title, or any meta-commentary:\n"
+    ),
+    "zh": (
+        "\n\n[參考續文]\n"
+        "{reference}\n\n"
+        "你現在是訓練階段使用的 self-teacher。學生只能看到原本的故事前文，"
+        "看不到這份參考續文。請利用參考續文，重新判斷原始續寫任務中可轉移的"
+        "作者文體、敘事狀態、節奏與限制，然後直接回答原本的續寫指令，寫出一個自然、"
+        "完整的段落。不要提及或複製參考續文，不要輸出分析、思考過程、標題或任何後設說明：\n"
     ),
 }
 
@@ -245,6 +277,10 @@ def get_hindsight_block_template(language: str) -> str:
     return HINDSIGHT_BLOCK_TEMPLATES[language]
 
 
+def get_phase1_reference_block_template(language: str) -> str:
+    return PHASE1_REFERENCE_BLOCK_TEMPLATES[language]
+
+
 def build_hindsight_messages(
     messages: List[Dict[str, str]],
     follow_up: str,
@@ -254,6 +290,23 @@ def build_hindsight_messages(
     conditional = copy.deepcopy(messages)
     block = get_hindsight_block_template(language).format(
         follow_up=follow_up.strip(),
+    )
+    for i in range(len(conditional) - 1, -1, -1):
+        if conditional[i]["role"] == "user":
+            conditional[i]["content"] += block
+            break
+    return conditional
+
+
+def build_phase1_teacher_messages(
+    messages: List[Dict[str, str]],
+    reference: str,
+    language: str = "en",
+) -> List[Dict[str, str]]:
+    """Add a reference continuation to the prompt used for teacher scoring."""
+    conditional = copy.deepcopy(messages)
+    block = get_phase1_reference_block_template(language).format(
+        reference=reference.strip(),
     )
     for i in range(len(conditional) - 1, -1, -1):
         if conditional[i]["role"] == "user":

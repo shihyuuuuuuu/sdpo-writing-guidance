@@ -30,17 +30,18 @@ def parse_judgement(text: str) -> int:
     if not clean:
         return -1
 
-    matches = re.findall(
-        r"(?:Judg(?:e)?ment|判定)\s*[:：]\s*([ABC])", clean, re.IGNORECASE
+    # The decision marker must be the final labelled decision, but it may be
+    # on the same line as the final rationale sentence.  Some API judges emit
+    # ``...。判定：A`` instead of putting ``判定：A`` on a new line.
+    match = re.search(
+        r"(?:Judg(?:e)?ment|判定)[ \t]*[:：][ \t]*([ABC])"
+        r"[ \t]*(?:[.!。])?[ \t]*$",
+        clean,
+        re.IGNORECASE,
     )
-    if matches:
-        return {"A": 0, "B": 1, "C": -1}[matches[-1].upper()]
-
-    # Conservative fallback: only accept a standalone final A/B/C token.
-    fallback = re.findall(r"\b([ABC])\b", clean.upper())
-    if not fallback:
+    if match is None:
         return -1
-    return {"A": 0, "B": 1, "C": -1}[fallback[-1]]
+    return {"A": 0, "B": 1, "C": -1}[match.group(1).upper()]
 
 
 def invert_pairwise_decisions(decisions: List[int]) -> List[int]:

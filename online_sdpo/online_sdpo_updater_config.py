@@ -10,8 +10,8 @@ class OnlineSDPOConfig:
 
     """ LoRA """
     use_lora: bool
-    lora_r: int = 256
-    lora_alpha: int = 512
+    lora_r: int = 64
+    lora_alpha: int = 128
     lora_target_modules: list[str] = field(
         default_factory=lambda:
         [
@@ -22,11 +22,13 @@ class OnlineSDPOConfig:
     lora_dropout: float = 0.0
 
     """ SDPO signal """
-    loss_mode: str  # "simple_signal" | "full_distillation"
-    signal_clip: float = 0.0  # 0 = no clipping
+    loss_mode: str  # "simple_signal" | "full_distillation" | "opsd_forward_kl_clip"
+    signal_clip: float = 1.0  # 0 = no clipping
+    pointwise_clip: float = 0.05  # OPSD per-vocabulary forward-KL clip
     ignore_first_k: int = 0
     distillation_topk: int = 20  # top-k logits for full_distillation
     distillation_add_tail: bool = True  # True = add tail bucket, False = renormalize top-k
+    fixed_teacher: bool = True  # use the initial/base policy for teacher scoring
 
     """ GPU / VLLM """
     model_vllm: bool
@@ -40,8 +42,12 @@ class OnlineSDPOConfig:
 
     """  Optimizer  """
     learning_rate: float
+    max_decay_steps: int
+    scheduler_type: str = "cosine"  # "linear" or "cosine"
+    warmup_steps: int = 5
+    min_lr_ratio: float = 0.1
     adam_epsilon: float = 1e-6
-    max_grad_norm: float = 1.0
+    max_grad_norm: float = 0.3
     weight_decay: float = 0.0
 
     """ Generation """

@@ -45,7 +45,8 @@ class Evaluator:
     def baseline_avg_len(self):
         return sum(len(c) for c in self._base_completions) / max(len(self._base_completions), 1)
 
-    def generate_completions(self, updater: OnlineSDPOUpdater, batch_size=16) -> List[str]:
+    # BATCH
+    def generate_completions(self, updater: OnlineSDPOUpdater, batch_size=32) -> List[str]:
         """Generate completions for all eval prompts using the current model."""
         completions = []
 
@@ -151,7 +152,7 @@ class Evaluator:
             )
         
     def _get_eval_record(self, eval_metrics, judge, current_completions):
-        debug_n = min(5, len(self.p_contexts))
+        debug_n = min(100, len(self.p_contexts))
         decisions = eval_metrics.get("decisions", [])
         raw_ab = getattr(judge, "last_raw_outputs_ab", [])
         raw_ba = getattr(judge, "last_raw_outputs_ba", [])
